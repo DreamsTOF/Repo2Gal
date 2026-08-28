@@ -6,13 +6,15 @@
 
 Repo2Gal 把 GitHub 仓库转换为基于 WebGAL 的“可游玩开源项目文档”。
 
-当前只实现 Chronicle（编年）模式：使用真实源码、README、Issue、PR、Discussion、wiki
-和 Release 生成项目历史视觉小说。不要擅自把 MVP 扩成通用 Galgame、RPG 或可视化 IDE。
+当前实现两种剧本模式：Chronicle（编年，默认）使用真实源码、README、Issue、PR、
+Discussion、wiki 和 Release 生成项目历史视觉小说；Overview（仓库概览）使用源码、
+README、目录树、根级项目文件、Release 与 wiki 生成面向新手的“项目导览”视觉小说。
+Quick Start（贡献者上手）仍在计划中。不要擅自把 MVP 扩成通用 Galgame、RPG 或可视化 IDE。
 
-当前稳定基线为 `v0.5.0`：v0.1.0 主流程已于 2026-07-31 通过真实仓库、真实 LLM
+当前稳定基线为 `v0.6.0`：v0.1.0 主流程已于 2026-07-31 通过真实仓库、真实 LLM
 和 WebGAL 产物的端到端实测；v0.3.0 重构流程架构（显式管线 + 统一错误域 + 薄 CLI）；
 v0.4.0 实现 Asset Pack v1 本地单包闭环与内置 CC0 Chronicle 示例包；v0.5.0 实现显式
-Performance Plan v1 动态演出闭环。
+Performance Plan v1 动态演出闭环；v0.6.0 实现仓库概览（Overview）模式。
 
 项目版本严格遵循 SemVer 2.0.0。`0.y.z` 阶段兼容修复提升 PATCH，向后兼容新功能或公开
 不兼容变更提升 MINOR；`1.0.0` 后不兼容变更提升 MAJOR。发版必须同步 `pyproject.toml`、
@@ -83,7 +85,8 @@ GitHub GraphQL；禁止借此恢复通用 API 客户端、分页器、限流器�
 `GET /repos/{owner}/{repo}` 补齐。新增 REST endpoint 必须有明确字段需求、文档记录和离线测试。
 
 不要默认传上游 `--all`。它会包含 hooks 和 Release assets，可能要求额外权限并下载大量二进制。
-当前显式 flags 定义在 `fetcher.NARRATIVE_BACKUP_FLAGS`。
+当前显式 flags 定义在 `fetcher.NARRATIVE_BACKUP_FLAGS`（Chronicle）与
+`fetcher.OVERVIEW_BACKUP_FLAGS`（Overview：源码/Release/wiki）。
 
 ### WebGAL
 
@@ -162,8 +165,8 @@ WebGAL Adapter 负责把全身原图编译为居中半身 transform，Performanc
 
 | 路径 | 职责 |
 |---|---|
-| `repo2gal/fetcher.py` | github-backup 适配；受控官方 REST 元数据；备份 JSON/Git -> RepoContext |
-| `repo2gal/generator.py` | 确定性部分：选角（角色表白名单）、上下文渲染、prompt 组装 |
+| `repo2gal/fetcher.py` | github-backup 适配（按模式选择 flags）；受控官方 REST 元数据；备份 JSON/Git -> RepoContext；Overview 目录树与项目文件提取 |
+| `repo2gal/generator.py` | 确定性部分：按模式选角（角色表白名单）、上下文渲染、prompt 组装 |
 | `repo2gal/llm.py` | LLM transport 薄客户端：错误包装与脱敏，与 prompt 组装分离 |
 | `repo2gal/validator.py` | WebGAL 安全子集与静默错误降级（硬边界） |
 | `repo2gal/webgal.py` | 从官方 parser 核实的命令常量与转义 |
@@ -176,6 +179,7 @@ WebGAL Adapter 负责把全身原图编译为居中半身 transform，Performanc
 | `repo2gal/errors.py` | 统一错误类型 -> 退出码契约与集中脱敏 |
 | `repo2gal/cli.py` | CLI 参数解析与结果渲染（不含流程逻辑） |
 | `repo2gal/prompts/chronicle.md` | Chronicle 生成约束 |
+| `repo2gal/prompts/overview.md` | Overview 生成约束 |
 | `tests/` | 离线测试，不应依赖 GitHub 或 LLM 网络 |
 
 ## 7. 开发环境与命令
@@ -216,7 +220,8 @@ export REPO2GAL_API_KEY=sk_xxx
 - 不传 `--asset-pack` 时 WebGAL 默认素材仍只有 3 张背景和 1 首 BGM。
 - `python-github-backup` 不落盘仓库列表元数据，目前由一个受控官方 REST 请求补齐。
 - 全量大仓库备份可能很慢、很大；依赖上游增量机制，不自己再写缓存协议。
-- 当前只有 Chronicle 模式和单场景产物。
+- Quick Start 模式未实现；两个现有模式都仍是单场景产物。
+- Overview 在线采集使用轻量 flags（源码/Release/wiki），复用完整备份时跳过社区 JSON 解析。
 - 动态演出必须显式传 `--performance`；默认 profile 为 `chronicle-subtle`；性能审计 JSON
   只有指定 `--save-beat-manifest`、`--save-performance-plan` 或 `--save-performance-report`
   时才写入。

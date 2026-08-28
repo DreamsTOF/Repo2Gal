@@ -2,19 +2,27 @@
 
 > 本文描述**当前实现和已锁定的边界**。历史设想放在 `docs/dev/early/`，不得把早期规划当成现状。
 
-当前基线：`v0.5.0`。Chronicle 主流程已于 2026-07-31 在真实 GitHub 仓库和真实 LLM
+当前基线：`v0.6.0`。Chronicle 主流程已于 2026-07-31 在真实 GitHub 仓库和真实 LLM
 环境中端到端实测通过。v0.4.0 落地 Asset Pack v1；v0.5.0 增加显式 Performance Plan
-动态演出、状态机校验和确定性 WebGAL 编译。
+动态演出、状态机校验和确定性 WebGAL 编译；v0.6.0 新增仓库概览（Overview）模式。
 
-版本号采用 SemVer 2.0.0；当前从 v0.4.0 升至 v0.5.0 是因为新增向后兼容的 Performance
-Plan、framing 和 CLI 能力。完整升级与多文件同步规则见 `CONTRIBUTING.md`「版本管理」。
+版本号采用 SemVer 2.0.0；当前从 v0.5.0 升至 v0.6.0 是因为新增向后兼容的 Overview
+模式、`--mode` CLI 选项与概览上下文能力。完整升级与多文件同步规则见
+`CONTRIBUTING.md`「版本管理」。
 
 ## 1. 产品定位
 
 Repo2Gal 是“可游玩的开源项目文档生成器”，不是通用 Galgame 生成器。
 
-当前 MVP 只实现 Chronicle（编年）模式：从真实源码、README、Issue、PR、Discussion、
-wiki 与 Release 中提炼项目历史，生成 WebGAL 静态站点。
+当前实现两种剧本模式：
+
+| `--mode` | 目标玩家 | 素材重点 | 剧情体验 |
+|---|---|---|---|
+| `chronicle`（默认） | 想了解项目历史、社区演变的人 | Issue/PR/Discussion、Release、README、wiki | 史诗编年史 |
+| `overview` | 第一次接触项目的人 | README、目录树、根级项目文件、Release、wiki | 新手村向导导览 |
+
+Quick Start（贡献者上手）模式仍在计划中。不要擅自把 MVP 扩成通用 Galgame、RPG 或
+可视化 IDE。
 
 ## 2. 数据流
 
@@ -31,7 +39,9 @@ GitHub repository                                                 │
        ├──► python-github-backup     认证 / 分页 / 限流 / 重试 / GraphQL / Git clone
        │               │
        │               ▼
-       │    完整源码与社区原始备份
+       │    按模式落盘的原始备份
+       │    Chronicle：源码 + Issue/PR/Discussion + wiki + Release + label + milestone
+       │    Overview：源码 + wiki + Release（轻量，不拉社区讨论）
        │
        └──► GitHub official REST     单次仓库概览：description / Star / topics 等
                        │
@@ -39,16 +49,16 @@ GitHub repository                                                 │
 .repo2gal/backups/<owner>/           可审计、可增量、可复用的原始数据
        │
        ▼
-fetcher.context_from_backup()        确定性归一化与热门素材筛选
-       │
+fetcher.context_from_backup()        确定性归一化与热门素材筛选；
+       │                             Overview 另提取目录树 + 根级项目文件摘录
        ▼
 RepoContext
        │
        ▼
-generator.build_cast()               确定性选角（角色表白名单）
+generator.build_cast()               确定性按模式选角（角色表白名单）
        │
        ▼
-generator.build_prompt()             确定性 prompt 组装（只暴露逻辑素材 ID）
+generator.build_prompt()             确定性按模式组装 prompt（只暴露逻辑素材 ID）
        │
        ▼
 OpenAI-compatible LLM 1              非确定性：写剧情（llm.LLMClient）
@@ -68,11 +78,12 @@ performance.extract_beats()          确定性 Beat Manifest
 packager.package()                   WebGAL 模板 + 素材/演出适配 + notices，staging 内完成
        │
        ▼
-output/<repo>/                       可由任意静态服务器托管
+output/<repo>/ 或 output/<repo>-<mode>/  可由任意静态服务器托管
 ```
 
-整条直线由 `pipeline.py` 编排（四模式矩阵，见 README「模式矩阵」），`cli.py` 只负责
-参数映射与结果渲染。阶段依赖（fetch/LLM/package）可注入，流水线可离线端到端测试。
+整条直线由 `pipeline.py` 编排（`--dry-run` × `--script` 四模式矩阵，再叠加
+`--mode` 剧本模式），`cli.py` 只负责参数映射与结果渲染。阶段依赖（fetch/LLM/package）
+可注入，流水线可离线端到端测试。
 
 ## 3. 外部依赖边界
 
@@ -110,6 +121,16 @@ Repo2Gal **不负责**：
 | LFS objects | 体积不可控，默认源码 clone 足够 |
 
 不要把上游的 `--all` 直接作为默认值：它会隐式包含 hooks 与 Release assets。
+
+剧本模式对应两套显式 flags，都定义在 `fetcher.py`：
+
+| 模式 | flags | 说明 |
+|---|---|---|
+| `chronicle` | `NARRATIVE_BACKUP_FLAGS` | 源码 + Issue/PR/Discussion + wiki + Release + label/milestone + fork |
+| `overview` | `OVERVIEW_BACKUP_FLAGS` | 只采源码 + Release + wiki；概览不需要社区讨论，显著降低首次备份时间 |
+
+复用已有备份时不重采数据；Overview 在 Context Builder 阶段还会跳过社区 JSON 解析，
+因此即使复用 Chronicle 的完整备份也保持快速。
 
 ### 3.2 官方 GitHub REST API 例外
 
@@ -155,8 +176,8 @@ SPDX expression 使用 `packaging.licenses`，BCP 47 使用 `langcodes`，CSS Co
 
 | 文件 | 职责 | 不应承担 |
 |---|---|---|
-| `fetcher.py` | 调上游备份工具；调用受控官方 REST 补充；构建 `RepoContext` | HTML 爬虫、通用 API 客户端 |
-| `generator.py` | 确定性选角、上下文渲染、prompt 组装 | GitHub 抓取、WebGAL 打包、网络调用 |
+| `fetcher.py` | 按模式调上游备份工具；受控官方 REST 补充；构建 `RepoContext`；Overview 目录树/项目文件提取 | HTML 爬虫、通用 API 客户端 |
+| `generator.py` | 确定性按模式选角、上下文渲染、prompt 组装 | GitHub 抓取、WebGAL 打包、网络调用 |
 | `llm.py` | LLM transport 薄客户端：请求、错误包装、脱敏 | prompt 策略、重试框架 |
 | `validator.py` | WebGAL 安全子集、流程完整性、静默错误降级 | 改写剧情内容 |
 | `webgal.py` | 经源码核实的命令常量与转义 | 猜测引擎语法 |
@@ -164,8 +185,8 @@ SPDX expression 使用 `packaging.licenses`，BCP 47 使用 `langcodes`，CSS Co
 | `asset_pack.py` | Schema、本地路径/授权/MIME/SHA/Profile 校验与本地包初始化 | 下载素材、执行包内脚本 |
 | `webgal_assets.py` | 逻辑 ID 映射、素材复制、脚本重写、第三方声明聚合 | 转码、多包覆盖、许可证猜测 |
 | `performance.py` | Beat Manifest、Performance Plan Schema/语义校验、状态机和 WebGAL 编译 | 直接信任 LLM 命令、任意引擎参数 |
-| `pipeline.py` | 流程编排唯一持有者：四模式矩阵、阶段产物传递 | 参数解析、终端渲染 |
-| `config.py` | 默认值、环境解析、路径常量、密钥脱敏显示 | 业务逻辑 |
+| `pipeline.py` | 流程编排唯一持有者：执行矩阵、剧本模式、阶段产物传递 | 参数解析、终端渲染 |
+| `config.py` | 默认值（含剧本模式）、环境解析、路径常量、密钥脱敏显示 | 业务逻辑 |
 | `errors.py` | 统一错误类型与退出码契约、错误正文脱敏 | 业务逻辑 |
 | `cli.py` | 参数解析、结果渲染、退出码映射 | 流程逻辑实现 |
 
@@ -204,6 +225,16 @@ SPDX expression 使用 `packaging.licenses`，BCP 47 使用 `langcodes`，CSS Co
 `RepoContext` 是面向 LLM 的有损视图，不是备份格式。全量原始数据必须保留，
 上下文只选评论最活跃的 Top N 条并做长度控制。
 
+Overview 额外携带两类确定性提取字段，均由 Context Builder 生成：
+
+- `file_tree`：从 Git tree（非 Git 备份回退为文件遍历）渲染的浅层目录树。
+  依赖目录、构建产物、缓存目录整体过滤，深度、行数与字符数均有上限。
+- `project_files`：根级 `pyproject.toml`、`package.json`、`Cargo.toml`、`Dockerfile`、
+  `CONTRIBUTING.md` 等安装/构建/贡献入口文件的摘录；逐文件与总量均有上限。
+
+Overview 模式下不解析 `issues/`、`pulls/`、`discussions/` JSON；这些字段仍然完整保留在
+原始备份层，仅不进入 Overview 的 `RepoContext`。
+
 当前上游不会把仓库列表元数据单独落盘。v0.2.0 通过官方
 `GET /repos/{owner}/{repo}` 补齐，并保存为 `repo2gal-repository.json`，供离线复用。
 
@@ -239,7 +270,7 @@ v0.4.0 只实现 Local Provider，Git/AI Provider 仍是计划；核心没有 Pr
 一次只接受一个目录包，避免在没有真实需求时设计多包覆盖和依赖解析。
 
 素材包必须引擎无关。剧本引用逻辑 ID，例如 `background.archive`，WebGAL Adapter
-确定性映射为 `game/background/background-archive.png` 等目标。当前 Chronicle MVP 支持
+确定性映射为 `game/background/background-archive.png` 等目标。当前两种剧本模式共用
 `background`、`character`、`bgm` 三类素材；不指定包时继续使用 WebGAL 默认文件名，指定包时
 默认背景/BGM 也会合并进 prompt 与 validator catalog，并由 Adapter 原样放行。
 逻辑 ID 强制以素材类型和点号开头，不能与 WebGAL 默认裸文件名形成歧义或遮蔽。
@@ -289,15 +320,16 @@ evidence 保存在 `third_party/asset-packs/`。
 
 已完成：
 
-- Chronicle 单模式通路
-- python-github-backup 采集适配层
+- Chronicle 模式通路（默认）
+- Overview（仓库概览）模式通路：轻量采集、独立 prompt、目录树/项目文件上下文
+- python-github-backup 采集适配层（两套显式 flags）
 - 源码、README、Issue、PR、Discussion、wiki、Release 上下文归一化
 - 原始备份复用与上游增量备份
-- LLM prompt 与确定性角色表
+- LLM prompt 与确定性角色表（按模式生成）
 - WebGAL validator
 - 固定版本、SHA-256 校验的官方 WebGAL 发行版模板注入
 - CLI 与离线测试
-- 真实仓库 + 真实 LLM + WebGAL 产物端到端验证
+- 真实仓库 + 真实 LLM + WebGAL 产物端到端验证（Chronicle）
 - `github-backup` 实时采集进度与 WebGAL 下载百分比
 - 官方 GitHub REST 仓库概览及离线落盘
 - v0.3.0：显式管线（pipeline.py）、统一错误域（errors.py）、配置集中（config.py）、
@@ -306,17 +338,21 @@ evidence 保存在 `third_party/asset-packs/`。
   `THIRD_PARTY_NOTICES.md` 和 CC0 Chronicle 示例包
 - v0.5.0：显式 `--performance`、Beat Manifest、Performance Plan v1、演出状态机与
   WebGAL 4.6.2 确定性编译
+- v0.6.0：`--mode overview`、Overview prompt、轻量 flags、目录树/项目文件提取与
+  概览专用选角
 
-`v0.5.0` 结论：Chronicle MVP、单本地素材包闭环和显式动态演出均已实现；Git/AI Provider 仍是计划，
-不得写成现有能力。
+`v0.6.0` 结论：Chronicle、Overview、单本地素材包闭环和显式动态演出均已实现；
+Quick Start 模式、Git/AI Provider 仍是计划，不得写成现有能力。
 
-动态演出已实现为显式 opt-in 功能：`--performance` 使用默认 `chronicle-subtle` profile，
-第二次 LLM 输出 Performance Plan v1 JSON，Python 生成 Beat Manifest、执行状态/预算校验、
-编译有限 WebGAL 4.6.2 演出宏并按 beat_id 合并。审计 JSON 只有用户指定保存参数时才写入。
+动态演出已实现为显式 opt-in 功能，两种剧本模式均可使用：`--performance` 使用默认
+`chronicle-subtle` profile，第二次 LLM 输出 Performance Plan v1 JSON，Python 生成
+Beat Manifest、执行状态/预算校验、编译有限 WebGAL 4.6.2 演出宏并按 beat_id 合并。
+审计 JSON 只有用户指定保存参数时才写入。
 
 推荐下一步：
 
 1. 给备份解析器增加真实 `python-github-backup` fixture 回归样本。
-2. 用真实 LLM 和 CC0 示例包评估 Chronicle prompt，建立固定仓库 golden cases。
-3. 再考虑多场景拆分和 Git Asset Provider；实现 Git Provider 前必须重新调研成熟 Git/归档依赖。
+2. 用真实 LLM 和 CC0 示例包评估两种模式的 prompt，建立固定仓库 golden cases。
+3. 再考虑 Quick Start 模式、多场景拆分和 Git Asset Provider；实现 Git Provider 前必须
+   重新调研成熟 Git/归档依赖。
 4. AI Provider 继续后置，先明确服务条款快照、Prompt/seed 与 `LicenseRef-AI-*` 策略。

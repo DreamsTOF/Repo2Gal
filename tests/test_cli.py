@@ -127,6 +127,28 @@ def test_cli_maps_performance_options_into_run_options(monkeypatch, tmp_path):
     assert options.save_performance_report == tmp_path / "report.json"
 
 
+def test_cli_maps_overview_mode_and_defaults_to_chronicle(monkeypatch, tmp_path):
+    captured = {}
+
+    def fake(options, **kwargs):
+        captured["options"] = options
+        return _artifacts(output_dir=tmp_path / "out")
+
+    monkeypatch.setattr(cli, "run_pipeline", fake)
+    overview = CliRunner().invoke(cli.main, ["acme/widget", "--mode", "overview"])
+    assert overview.exit_code == 0, overview.output
+    assert captured["options"].mode == "overview"
+
+    CliRunner().invoke(cli.main, ["acme/widget"])
+    assert captured["options"].mode == "chronicle"
+
+
+def test_cli_rejects_unknown_mode():
+    result = CliRunner().invoke(cli.main, ["acme/widget", "--mode", "architect"])
+    assert result.exit_code == 2
+    assert "Invalid value" in result.output
+
+
 def test_cli_default_paths(monkeypatch):
     captured = {}
 
@@ -140,6 +162,11 @@ def test_cli_default_paths(monkeypatch):
     assert captured["options"].output_dir == Path("output") / "widget"
     assert captured["options"].backup_root == Path(".repo2gal") / "backups" / "acme"
     assert "dry-run 校验结束" in result.output
+
+    CliRunner().invoke(
+        cli.main, ["acme/widget", "--mode", "overview", "--dry-run", "--script", "s.txt"]
+    )
+    assert captured["options"].output_dir == Path("output") / "widget-overview"
 
 
 def test_cli_prints_prompt_for_plain_dry_run(monkeypatch):

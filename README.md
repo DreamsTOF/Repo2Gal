@@ -5,11 +5,12 @@
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/)
 
-输入一个 GitHub 仓库地址，输出一个静态网站：以视觉小说（编年史）的形式讲述该项目的
-真实历史——它为何诞生、经历过哪些争论、社区如何演变。剧情素材全部来自仓库的真实
-源码、README、Issue、PR、Discussion、wiki 与 Release。
+输入一个 GitHub 仓库地址，输出一个静态网站：默认以视觉小说（编年史）的形式讲述
+该项目的真实历史——它为何诞生、经历过哪些争论、社区如何演变；也可以切换到
+**仓库概览（Overview）** 模式，生成给第一次接触项目的人看的“新手村向导”剧情。
+剧情素材全部来自仓库的真实源码、README、Issue、PR、Discussion、wiki 与 Release。
 
-当前版本：v0.5.0（版本历史见 [CHANGELOG.md](CHANGELOG.md)）。项目版本严格遵循
+当前版本：v0.6.0（版本历史见 [CHANGELOG.md](CHANGELOG.md)）。项目版本严格遵循
 [Semantic Versioning 2.0.0](https://semver.org/)，具体升级和同步规则见
 [CONTRIBUTING.md](CONTRIBUTING.md#版本管理)。
 
@@ -28,22 +29,26 @@ https://repo2gal.rhopaper.top/demo
 ### 数据采集
 
 - [x] 全量仓库数据采集：源码、Issue、PR、Discussion、wiki、Release、label、milestone
+- [x] Overview 轻量采集：源码、Release、wiki，不拉取 Issue/PR/Discussion
 - [x] 官方 GitHub REST 仓库概览补充（Star、topics、语言、创建时间等），落盘可离线复用
 - [x] 上游增量备份与 `--reuse-backup` 离线复用
 - [x] 采集进度实时显示
 - [x] 叙事素材筛选与上下文构建：热门讨论、README/wiki 摘录、语言检测、贡献者统计
+- [x] Overview 上下文构建：过滤后的目录树与根级项目文件（依赖/构建配置）摘录
 - [ ] Release 资产与附件下载（显式选项）
 
 ### 剧本生成
 
 - [x] Chronicle 模式剧本生成（单场景线性叙事 + 少量分支）
+- [x] Overview 模式剧本生成（新手村向导：定位、特性、安装用法与目录地图）
 - [x] 显式 `--performance` 动态演出规划（Beat Manifest + Performance Plan v1）
-- [x] 确定性角色表白名单（项目化身 / 核心贡献者 / 技术栈精灵）
+- [x] 确定性角色表白名单（Chronicle：项目化身 / 核心贡献者 / 技术栈精灵；
+      Overview：项目向导 / 技术栈精灵）
 - [x] 任意 OpenAI 兼容端点（`--base-url` / `--model` / 环境变量）
 - [x] `--dry-run` / `--script` / `--save-prompt` 省钱与离线路径
 - [ ] LLM 失败自动重试（需依赖调研记录）
 - [ ] 多场景 / 多章节剧情切分
-- [ ] Chronicle 之外的游戏模式
+- [ ] Quick Start（贡献者上手）模式
 
 ### 校验与安全
 
@@ -66,7 +71,7 @@ https://repo2gal.rhopaper.top/demo
 - [x] Asset Pack v1 Schema 与安全校验（SemVer、SPDX、BCP 47、MIME、SHA-256）
 - [x] Performance Plan v1 动态演出（显式开启、确定性编译、可选审计 JSON）
 - [x] Local Provider（`assets init/validate`、单包 WebGAL Adapter）
-- [x] 内置 CC0 Chronicle 示例包（与 WebGAL 默认素材并存）
+- [x] 内置 CC0 示例包（Chronicle/Overview 均可使用，与 WebGAL 默认素材并存）
 - [x] 角色 framing 元数据：全身原图非破坏性编译为 WebGAL 居中半身构图
 - [ ] Git Provider（开源素材包下载）
 - [ ] AI Provider（AI 生成素材）
@@ -75,7 +80,7 @@ https://repo2gal.rhopaper.top/demo
 
 - [x] 统一错误体系与退出码契约、错误信息脱敏
 - [x] 显式管线（pipeline）与可注入依赖，全流程可离线端到端测试
-- [x] 离线测试套件（168 项）
+- [x] 离线测试套件（183 项）
 - [x] 文档体系：用户指南、开发规约、Agent 指南、部署文档
 - [x] GitHub Actions 离线 CI 与 `main` 成功后自动生成/部署演示（需仓库 secrets）
 - [ ] python-github-backup 真实 fixture 回归样本
@@ -101,6 +106,17 @@ export REPO2GAL_API_KEY=sk-xxx     # LLM API Key
 .venv/bin/repo2gal owner/repo
 python3 -m http.server -d output/<repo> 8000   # 打开 http://localhost:8000 游玩
 ```
+
+生成「仓库概览」模式：默认是 `chronicle`（编年史），传 `--mode overview` 切换：
+
+```bash
+.venv/bin/repo2gal owner/repo --mode overview
+python3 -m http.server -d output/<repo>-overview 8000   # Overview 默认输出目录
+```
+
+两种模式共用抓取、validator、Asset Pack 与打包流程，差异在采集范围、上下文构建、
+角色表和 prompt。Overview 只采集源码、Release 与 wiki，适合给第一次接触项目的玩家
+快速介绍“是什么、怎么用、代码怎么组织”。
 
 使用仓库内置的 CC0 Chronicle 素材包：
 
@@ -144,12 +160,13 @@ export REPO2GAL_MODEL=deepseek-chat
 
 ```bash
 repo2gal vuejs/core --dry-run                       # 只抓数据、打印 prompt，不调用 LLM
+repo2gal vuejs/core --mode overview --dry-run       # 查看 Overview 模式 prompt
 repo2gal vuejs/core --script my_story.txt           # 用手写剧本走完打包流程
 repo2gal vuejs/core --reuse-backup                  # 不联网，复用上次原始备份
 repo2gal vuejs/core --dry-run --script my_story.txt # 只校验剧本并打印报告，不打包
 ```
 
-### 模式
+### 执行矩阵（`--dry-run` × `--script`）
 
 | `--dry-run` | `--script` | 行为 |
 |---|---|---|
@@ -157,6 +174,13 @@ repo2gal vuejs/core --dry-run --script my_story.txt # 只校验剧本并打印�
 | ✗ | ✓ | 抓取 → 选角 → 读脚本 → 校验 → 打包 |
 | ✓ | ✗ | 抓取 → 选角 → prompt → 打印 prompt（不调 LLM） |
 | ✓ | ✓ | 抓取 → 选角 → 读脚本 → 校验 → 打印报告（不打包） |
+
+剧本模式由 `--mode` 独立控制：
+
+| `--mode` | 内容 | 采集范围 | 默认产物目录 |
+|---|---|---|---|
+| `chronicle`（默认） | 项目编年史：诞生、争论、社区演变 | 源码 + Issue/PR/Discussion + wiki + Release | `output/<repo>` |
+| `overview` | 仓库概览：定位、特性、安装用法、目录地图 | 源码 + wiki + Release | `output/<repo>-overview` |
 
 `--strict` 在所有执行校验的路径生效：validator 存在任何降级即以退出码 5 结束。
 
@@ -183,8 +207,8 @@ GitHub REST metadata ─┘    筛选叙事素材      写剧本    收敛降级
 
 | 模块 | 职责 |
 |---|---|
-| `fetcher.py` | 调用 `python-github-backup`；从官方 REST API 补仓库概览；构建 RepoContext |
-| `generator.py` | 确定性部分：选角（角色表白名单）、上下文渲染、prompt 组装 |
+| `fetcher.py` | 调用 `python-github-backup`（按剧本模式选择 flags）；官方 REST 补仓库概览；构建 RepoContext（Overview 含目录树与根级项目文件） |
+| `generator.py` | 确定性部分：按模式选角（角色表白名单）、上下文渲染、prompt 组装 |
 | `llm.py` | LLM transport 薄客户端：错误包装与脱敏，与 prompt 组装分离 |
 | `validator.py` | 把脚本收敛到安全语法子集（不可绕过的硬边界） |
 | `packager.py` | WebGAL 发行版缓存、原子打包、最小 flowchart 生成 |
@@ -206,8 +230,10 @@ Discussion 回复、Issue timeline、wiki clone 和增量备份全部交给成�
 仓库数据模块允许调用 GitHub 官方 REST API，但禁止抓取 `github.com` HTML 页面、使用
 搜索引擎爬取、调用非官方接口或自行实现通用 GitHub 客户端。
 
-默认采集叙事所需的完整文本数据，但不默认下载 Release 二进制和用户附件（可能高达数十 GB），
-二者留作未来的显式选项。原始备份保存在 `.repo2gal/backups/<owner>/repositories/<repo>/`。
+默认 Chronicle 采集叙事所需的完整文本数据；`--mode overview` 只采集源码、Release
+与 wiki，不拉取 Issue/PR/Discussion。两种模式都不默认下载 Release 二进制和用户附件
+（可能高达数十 GB），后者留作未来的显式选项。原始备份保存在
+`.repo2gal/backups/<owner>/repositories/<repo>/`。
 
 ### 为什么必须有 validator
 
@@ -250,8 +276,11 @@ v0.4.0 已实现 Asset Pack v1 Schema、Local Provider、安全校验、WebGAL A
 ## 限制
 
 - 不传 `--asset-pack` 时只有 WebGAL 内置的 3 张背景和 1 首 BGM；
-- 当前只支持一个本地 Chronicle 包，不支持多包覆盖、Git 下载或 AI 生成；
-- 全量 Issue/PR/Discussion 备份首次可能较慢，后续运行使用上游增量备份。
+- 当前只支持一个本地素材包（内置示例主题为 Chronicle，同样可用于 Overview），
+  不支持多包覆盖、Git 下载或 AI 生成；
+- Chronicle 的全量 Issue/PR/Discussion 备份首次可能较慢；Overview 模式采集范围更小，
+  通常快得多；
+- Quick Start（贡献者上手）模式与多场景产物仍在计划中。
 
 ## 文档
 

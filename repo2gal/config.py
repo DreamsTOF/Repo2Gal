@@ -14,6 +14,15 @@ DEFAULT_BASE_URL = "https://api.deepseek.com/v1"
 DEFAULT_MODEL = "deepseek-v4-pro"
 DEFAULT_LLM_TIMEOUT = 300
 
+# 剧本生成模式。Chronicle（编年史）是 v0.1.0 起的默认模式；
+# Overview（仓库概览）是 v0.6.0 新增的第二种游戏模式。
+GAME_MODES = ("chronicle", "overview")
+DEFAULT_GAME_MODE = "chronicle"
+GAME_MODE_TITLES = {
+    "chronicle": "编年史",
+    "overview": "仓库概览",
+}
+
 # WebGAL 发行版自带的兼容默认素材；使用 Asset Pack 时仍与包内资源并存。
 DEFAULT_BACKGROUNDS = ["bg.webp", "WebGalEnter.webp", "WebGAL_New_Enter_Image.webp"]
 DEFAULT_BGM = ["s_Title.mp3"]
@@ -46,8 +55,10 @@ def default_backup_root(owner: str) -> Path:
     return Path(".repo2gal") / "backups" / owner
 
 
-def default_output_dir(repo: str) -> Path:
-    return Path("output") / repo
+def default_output_dir(repo: str, mode: str = DEFAULT_GAME_MODE) -> Path:
+    """默认产物目录；Chronicle 保持 output/<repo>，其他模式加模式后缀。"""
+    path = Path("output") / repo
+    return path if mode == DEFAULT_GAME_MODE else Path(f"{path}-{mode}")
 
 
 def webgal_cache_dir() -> Path:

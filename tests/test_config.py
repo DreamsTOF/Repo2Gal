@@ -39,6 +39,8 @@ def test_blank_env_treated_as_unset(monkeypatch):
 def test_default_paths():
     assert config.default_backup_root("acme") == Path(".repo2gal") / "backups" / "acme"
     assert config.default_output_dir("widget") == Path("output") / "widget"
+    assert config.default_output_dir("widget", "chronicle") == Path("output") / "widget"
+    assert config.default_output_dir("widget", "overview") == Path("output") / "widget-overview"
 
 
 def test_webgal_cache_dir_respects_xdg(monkeypatch, tmp_path):

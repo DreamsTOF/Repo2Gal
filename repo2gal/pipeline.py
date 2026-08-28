@@ -1,4 +1,4 @@
-"""Chronicle 流程编排：唯一持有“先做什么、后做什么”的地方。
+"""Chronicle / Overview 流程编排：唯一持有“先做什么、后做什么”的地方。
 
 设计原则：
 - 一条直线：抓取 -> 选角 -> prompt -> 剧本 -> 校验 -> 打包，无循环、无插件；
@@ -19,8 +19,11 @@ from .config import (
     DEFAULT_BACKGROUNDS,
     DEFAULT_BASE_URL,
     DEFAULT_BGM,
+    DEFAULT_GAME_MODE,
     DEFAULT_LLM_TIMEOUT,
     DEFAULT_MODEL,
+    GAME_MODE_TITLES,
+    GAME_MODES,
 )
 from .errors import GenerationError, UsageError, ValidationFailed
 from .fetcher import RepoContext, fetch_context
@@ -54,6 +57,7 @@ class RunOptions:
     repo: str
     output_dir: Path
     backup_root: Path
+    mode: str = DEFAULT_GAME_MODE
     reuse_backup: bool = False
     organization: bool = False
     top_threads: int = 12
@@ -143,6 +147,7 @@ def _default_fetch(options: RunOptions, log: Callable, progress: Callable) -> Re
         organization=options.organization,
         top_threads=options.top_threads,
         reuse_backup=options.reuse_backup,
+        mode=options.mode,
         log=log,
         progress=progress,
     )
@@ -158,8 +163,11 @@ def run_pipeline(
     warn=lambda _m: None,
     progress=lambda _m: None,
 ) -> RunArtifacts:
-    """按模式矩阵执行全部阶段，返回各阶段产物。"""
+    """按剧本模式（--mode）与 dry-run/script 执行矩阵运行全部阶段，返回阶段产物。"""
 
+    if options.mode not in GAME_MODES:
+        raise UsageError(f"未知剧本模式：{options.mode}")
+    log(f"剧本模式：{GAME_MODE_TITLES[options.mode]}（{options.mode}）")
     audit_paths = (
         options.save_beat_manifest,
         options.save_performance_plan,
@@ -187,7 +195,7 @@ def run_pipeline(
     ctx = (fetch_fn or _default_fetch)(options, log, progress)
 
     # --- 阶段 2：确定性选角 ---
-    cast = build_cast(ctx)
+    cast = build_cast(ctx, mode=options.mode)
     log(f"角色表：{'、'.join(sorted(cast.names))}")
 
     # --- 阶段 3：prompt 组装与保存 ---
@@ -195,12 +203,13 @@ def run_pipeline(
         build_prompt(
             ctx,
             cast,
+            mode=options.mode,
             backgrounds=DEFAULT_BACKGROUNDS + asset_pack.logical_ids("background"),
             figures=asset_pack.logical_ids("character"),
             bgm=DEFAULT_BGM + asset_pack.logical_ids("bgm"),
         )
         if asset_pack is not None
-        else build_prompt(ctx, cast)
+        else build_prompt(ctx, cast, mode=options.mode)
     )
     if options.save_prompt:
         _save_prompt(options.save_prompt, prompt)
@@ -230,7 +239,7 @@ def run_pipeline(
             api_key=options.api_key,
             timeout=options.llm_timeout,
         )
-        log("调用 LLM 生成剧本，可能需要一两分钟")
+        log(f"调用 LLM 生成{GAME_MODE_TITLES[options.mode]}剧本，可能需要一两分钟")
         raw = client.complete(prompt)
         log(f"LLM 返回 {len(raw.splitlines())} 行")
 
@@ -435,11 +444,15 @@ def run_pipeline(
         )
 
     # --- 阶段 9：打包 ---
+    game_key = f"repo2gal_{options.owner}_{options.repo}"
+    if options.mode != "chronicle":
+        # Chronicle 保持 v0.1.0 以来的存档键不变；新模式单独隔离存档。
+        game_key = f"{game_key}_{options.mode}"
     output_dir = (package_fn or package)(
         performance_script,
         options.output_dir,
-        game_name=f"{ctx.full_name} 编年史",
-        game_key=f"repo2gal_{options.owner}_{options.repo}",
+        game_name=f"{ctx.full_name} {GAME_MODE_TITLES[options.mode]}",
+        game_key=game_key,
         asset_pack=asset_pack,
         log=log,
     )

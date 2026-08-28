@@ -296,7 +296,7 @@ MIDI 只包含音符和控制信息，最终音频还依赖 SoundFont、采样�
 | `repo2gal.ui` | 配色、字体、文本框或等价 UI 配置 |
 | `repo2gal.character` | 至少一个角色及 `normal` 表情 |
 | `repo2gal.audio` | 至少一首 BGM |
-| `repo2gal.chronicle` | 编年模式所需背景、BGM、角色 |
+| `repo2gal.chronicle` | 剧情模式（Chronicle/Overview）所需背景、BGM、角色 |
 | `repo2gal.complete` | 可独立生成完整游戏 |
 
 MVP 只支持一个完整目录包，不实现依赖解析和多包覆盖。多包组合应在有真实需求后再设计。

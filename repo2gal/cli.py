@@ -16,7 +16,9 @@ import click
 
 from .asset_pack import init_asset_pack, load_asset_pack
 from .config import (
+    DEFAULT_GAME_MODE,
     DEFAULT_LLM_TIMEOUT,
+    GAME_MODES,
     default_backup_root,
     default_output_dir,
     resolve_api_key,
@@ -49,10 +51,28 @@ def _die(msg: str, code: int) -> None:
 
 @click.command(name="repo2gal")
 @click.argument("repo")
-@click.option("--output", "-o", default=None, type=click.Path(), help="产物目录，默认 ./output/<repo>")
+@click.option(
+    "--mode",
+    type=click.Choice(sorted(GAME_MODES)),
+    default=DEFAULT_GAME_MODE,
+    show_default=True,
+    help="剧本模式：chronicle 编年史 / overview 仓库概览",
+)
+@click.option(
+    "--output",
+    "-o",
+    default=None,
+    type=click.Path(),
+    help="产物目录；默认 ./output/<repo>，overview 为 ./output/<repo>-overview",
+)
 @click.option("--model", default=None, help="模型名，默认取 REPO2GAL_MODEL 或 deepseek-v4-pro")
 @click.option("--base-url", default=None, help="OpenAI 兼容端点，默认取 REPO2GAL_BASE_URL")
-@click.option("--threads", default=12, show_default=True, help="从全量备份中选入上下文的热门讨论数")
+@click.option(
+    "--threads",
+    default=12,
+    show_default=True,
+    help="Chronicle 模式选入上下文的热门讨论数（overview 忽略）",
+)
 @click.option(
     "--backup-dir",
     type=click.Path(),
@@ -90,6 +110,7 @@ def _die(msg: str, code: int) -> None:
 @click.option("--timeout", default=DEFAULT_LLM_TIMEOUT, show_default=True, help="LLM 请求超时（秒）")
 def generate(
     repo,
+    mode,
     output,
     model,
     base_url,
@@ -116,6 +137,7 @@ def generate(
     \b
     示例：
       repo2gal vuejs/core
+      repo2gal vuejs/core --mode overview
       repo2gal https://github.com/OpenWebGAL/WebGAL --dry-run
       repo2gal vuejs/core --reuse-backup --script my_story.txt
     """
@@ -127,8 +149,9 @@ def generate(
     options = RunOptions(
         owner=owner,
         repo=name,
-        output_dir=Path(output) if output else default_output_dir(name),
+        output_dir=Path(output) if output else default_output_dir(name, mode),
         backup_root=Path(backup_dir) if backup_dir else default_backup_root(owner),
+        mode=mode,
         reuse_backup=reuse_backup,
         organization=organization,
         top_threads=threads,

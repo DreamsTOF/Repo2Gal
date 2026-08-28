@@ -1,10 +1,10 @@
 # Performance Plan v1 设计
 
-> 状态：**v0.5.0 已实现第一版流水线。** Schema、Beat Manifest、Performance Plan 校验、
-> 确定性 WebGAL 编译和显式 CLI 开关已落地；仍需继续通过真实模型和 WebGAL 产物调优视觉
-> golden cases。
+> 状态：**v0.5.0 已实现第一版流水线；v0.6.0 起 Chronicle 与 Overview 两种剧本模式
+> 均可显式开启。** Schema、Beat Manifest、Performance Plan 校验、确定性 WebGAL 编译
+> 和显式 CLI 开关已落地；仍需继续通过真实模型和 WebGAL 产物调优视觉 golden cases。
 >
-> 本文定义 Chronicle 的动态演出规划协议。
+> 本文定义两种剧本模式共用的动态演出规划协议。
 > 当前 WebGAL 目标版本固定为 `4.6.2`，实现以该版本发行版中的 parser、
 > 官方 demo 和实际产物验证命令语义。
 

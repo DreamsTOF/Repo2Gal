@@ -4,6 +4,23 @@
 [Semantic Versioning 2.0.0](https://semver.org/)；`0.y.z` 阶段的新功能提升 `MINOR`，
 兼容缺陷修复提升 `PATCH`，公开不兼容变更至少提升 `MINOR`。
 
+## v0.6.0 — 2026-08-26
+
+**仓库概览（Overview）模式**：
+
+- 新增 `--mode` 选项（`chronicle` 默认 / `overview`），实现长期规划文档中的
+  仓库概览模式；Chronicle 的行为、产物存档键与默认参数保持兼容；
+- Overview 采用独立 prompt：以“新手村向导”视角覆盖项目定位、核心特性、
+  安装与快速开始、目录结构和继续深入入口，不把 Issue/PR 历史争论当主线；
+- Overview 使用独立的上游采集范围（源码、Release、wiki），不拉取
+  Issue/PR/Discussion；复用已有完整备份时也跳过社区 JSON 解析，首次与复用运行更快；
+- 新增确定性概览上下文提取：过滤依赖/构建产物的浅层目录树，以及 pyproject.toml、
+  package.json、Cargo.toml、Dockerfile、CONTRIBUTING 等根级项目文件摘录；
+- Overview 的确定性角色表只保留项目向导与技术栈精灵；产物标题为
+  「`owner/repo` 仓库概览」，存档键使用 `repo2gal_<owner>_<repo>_overview` 独立隔离；
+- Overview 同样经过 validator 硬边界，支持 `--script`、`--dry-run`、`--strict`、
+  Asset Pack 与 `--performance`；离线测试从 168 项扩充到 183 项。
+
 ## v0.5.0 — 2026-08-22
 
 **Performance Plan v1 动态演出**：
