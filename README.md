@@ -10,7 +10,7 @@
 **仓库概览（Overview）** 模式，生成给第一次接触项目的人看的“新手村向导”剧情。
 剧情素材全部来自仓库的真实源码、README、Issue、PR、Discussion、wiki 与 Release。
 
-当前版本：v0.6.1（版本历史见 [CHANGELOG.md](CHANGELOG.md)）。项目版本严格遵循
+当前版本：v0.6.2（版本历史见 [CHANGELOG.md](CHANGELOG.md)）。项目版本严格遵循
 [Semantic Versioning 2.0.0](https://semver.org/)，具体升级和同步规则见
 [CONTRIBUTING.md](CONTRIBUTING.md#版本管理)。
 
@@ -40,7 +40,7 @@ https://repo2gal.rhopaper.top/demo
 ### 剧本生成
 
 - [x] Chronicle 模式剧本生成（单场景线性叙事 + 少量分支）
-- [x] Overview 模式剧本生成（新手村向导：定位、特性、安装用法与目录地图）
+- [x] Overview 模式剧本生成（新手村向导：定位、特性、安装用法与目录地图，全程由角色亲口讲述）
 - [x] 显式 `--performance` 动态演出规划（Beat Manifest + Performance Plan v1）
 - [x] 确定性角色表白名单（Chronicle：项目化身 / 核心贡献者 / 技术栈精灵；
       Overview：项目向导 / 技术栈精灵）

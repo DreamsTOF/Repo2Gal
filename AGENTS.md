@@ -11,11 +11,12 @@ Discussion、wiki 和 Release 生成项目历史视觉小说；Overview（仓库
 README、目录树、根级项目文件、Release 与 wiki 生成面向新手的“项目导览”视觉小说。
 Quick Start（贡献者上手）仍在计划中。不要擅自把 MVP 扩成通用 Galgame、RPG 或可视化 IDE。
 
-当前稳定基线为 `v0.6.1`：v0.1.0 主流程已于 2026-07-31 通过真实仓库、真实 LLM
+当前稳定基线为 `v0.6.2`：v0.1.0 主流程已于 2026-07-31 通过真实仓库、真实 LLM
 和 WebGAL 产物的端到端实测；v0.3.0 重构流程架构（显式管线 + 统一错误域 + 薄 CLI）；
 v0.4.0 实现 Asset Pack v1 本地单包闭环与内置 CC0 Chronicle 示例包；v0.5.0 实现显式
 Performance Plan v1 动态演出闭环；v0.6.0 实现仓库概览（Overview）模式；v0.6.1 修复
-WebGAL 4.6.2 旁白继承上一句 speaker 的问题（validator 统一补 `-clear`）。
+WebGAL 4.6.2 旁白继承上一句 speaker 的问题（validator 统一补 `-clear`）；v0.6.2 明确
+Overview 模式不使用旁白，向导台词全部由角色亲口说出。
 
 项目版本严格遵循 SemVer 2.0.0。`0.y.z` 阶段兼容修复提升 PATCH，向后兼容新功能或公开
 不兼容变更提升 MINOR；`1.0.0` 后不兼容变更提升 MAJOR。发版必须同步 `pyproject.toml`、

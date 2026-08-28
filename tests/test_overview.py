@@ -94,6 +94,9 @@ def test_build_prompt_uses_overview_template_and_context():
     assert "新手村向导" in prompt
     assert "仓库概览" in prompt
     assert "先看功能" in prompt or "先看安装" in prompt
+    assert "必须写成 `角色名:台词`" in prompt
+    assert "不要输出任何 `say:` 行" in prompt
+    assert "禁止输出 `say:` 行" in prompt
     assert "src/" in prompt
     assert "编年史" not in prompt.split("# 任务")[0]
     with pytest.raises(UsageError, match="未知剧本模式"):

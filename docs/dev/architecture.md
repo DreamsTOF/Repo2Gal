@@ -2,12 +2,12 @@
 
 > 本文描述**当前实现和已锁定的边界**。历史设想放在 `docs/dev/early/`，不得把早期规划当成现状。
 
-当前基线：`v0.6.1`。Chronicle 主流程已于 2026-07-31 在真实 GitHub 仓库和真实 LLM
+当前基线：`v0.6.2`。Chronicle 主流程已于 2026-07-31 在真实 GitHub 仓库和真实 LLM
 环境中端到端实测通过。v0.4.0 落地 Asset Pack v1；v0.5.0 增加显式 Performance Plan
-动态演出、状态机校验和确定性 WebGAL 编译；v0.6.0 新增仓库概览（Overview）模式；v0.6.1 修复旁白继承上一句 speaker 的问题。
+动态演出、状态机校验和确定性 WebGAL 编译；v0.6.0 新增仓库概览（Overview）模式；v0.6.1 修复旁白继承上一句 speaker 的问题；v0.6.2 明确 Overview 不使用旁白、向导台词全部由角色亲口说出。
 
 版本号采用 SemVer 2.0.0；当前从 v0.5.0 升至 v0.6.0 是因为新增向后兼容的 Overview
-模式、`--mode` CLI 选项与概览上下文能力；v0.6.0 到 v0.6.1 是兼容缺陷修复。
+模式、`--mode` CLI 选项与概览上下文能力；v0.6.0 之后均为兼容缺陷修复。
 完整升级与多文件同步规则见 `CONTRIBUTING.md`「版本管理」。
 
 ## 1. 产品定位
@@ -347,8 +347,10 @@ evidence 保存在 `third_party/asset-packs/`。
   概览专用选角
 - v0.6.1：validator 对所有旁白确定性补 `-clear`，无冒号文本统一转旁白，
   修复 WebGAL 4.6.2 旁白继承上一句 speaker 的静默错渲染
+- v0.6.2：Overview prompt 明确该模式不使用旁白，向导自我介绍、过渡与收尾
+  全部写成项目化身的台词，避免 LLM 把角色台词生成成 `say:`
 
-`v0.6.1` 结论：Chronicle、Overview、单本地素材包闭环和显式动态演出均已实现；
+`v0.6.2` 结论：Chronicle、Overview、单本地素材包闭环和显式动态演出均已实现；
 Quick Start 模式、Git/AI Provider 仍是计划，不得写成现有能力。
 
 动态演出已实现为显式 opt-in 功能，两种剧本模式均可使用：`--performance` 使用默认

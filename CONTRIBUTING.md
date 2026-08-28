@@ -99,8 +99,8 @@ MAJOR.MINOR.PATCH
 - `MINOR`：向后兼容的新功能、新 CLI 选项、新可选流程或公开能力扩展；
 - `MAJOR`：`1.0.0` 之后不向后兼容的 CLI、Python API、持久化格式或行为变更；
 - 在 `0.y.z` 阶段，任何公开不兼容变更至少提升 `MINOR`，并将 `PATCH` 归零；
-- 预发布版本使用 `0.6.1-alpha.1`、`0.6.1-beta.1`、`0.6.1-rc.1` 格式；
-- Python 元数据不带 `v`，Git tag、README 和 CHANGELOG 标题使用 `v0.6.1` 格式；
+- 预发布版本使用 `0.6.2-alpha.1`、`0.6.2-beta.1`、`0.6.2-rc.1` 格式；
+- Python 元数据不带 `v`，Git tag、README 和 CHANGELOG 标题使用 `v0.6.2` 格式；
 - Asset Pack 拥有独立 SemVer，不跟随 Repo2Gal 程序版本自动升级。
 
 发布版本时必须同步：
