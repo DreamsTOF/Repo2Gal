@@ -2,13 +2,13 @@
 
 > 本文描述**当前实现和已锁定的边界**。历史设想放在 `docs/dev/early/`，不得把早期规划当成现状。
 
-当前基线：`v0.6.0`。Chronicle 主流程已于 2026-07-31 在真实 GitHub 仓库和真实 LLM
+当前基线：`v0.6.1`。Chronicle 主流程已于 2026-07-31 在真实 GitHub 仓库和真实 LLM
 环境中端到端实测通过。v0.4.0 落地 Asset Pack v1；v0.5.0 增加显式 Performance Plan
-动态演出、状态机校验和确定性 WebGAL 编译；v0.6.0 新增仓库概览（Overview）模式。
+动态演出、状态机校验和确定性 WebGAL 编译；v0.6.0 新增仓库概览（Overview）模式；v0.6.1 修复旁白继承上一句 speaker 的问题。
 
 版本号采用 SemVer 2.0.0；当前从 v0.5.0 升至 v0.6.0 是因为新增向后兼容的 Overview
-模式、`--mode` CLI 选项与概览上下文能力。完整升级与多文件同步规则见
-`CONTRIBUTING.md`「版本管理」。
+模式、`--mode` CLI 选项与概览上下文能力；v0.6.0 到 v0.6.1 是兼容缺陷修复。
+完整升级与多文件同步规则见 `CONTRIBUTING.md`「版本管理」。
 
 ## 1. 产品定位
 
@@ -179,7 +179,7 @@ SPDX expression 使用 `packaging.licenses`，BCP 47 使用 `langcodes`，CSS Co
 | `fetcher.py` | 按模式调上游备份工具；受控官方 REST 补充；构建 `RepoContext`；Overview 目录树/项目文件提取 | HTML 爬虫、通用 API 客户端 |
 | `generator.py` | 确定性按模式选角、上下文渲染、prompt 组装 | GitHub 抓取、WebGAL 打包、网络调用 |
 | `llm.py` | LLM transport 薄客户端：请求、错误包装、脱敏 | prompt 策略、重试框架 |
-| `validator.py` | WebGAL 安全子集、流程完整性、静默错误降级 | 改写剧情内容 |
+| `validator.py` | WebGAL 安全子集、流程完整性、静默错误降级、旁白 `-clear` 归一化 | 改写剧情内容 |
 | `webgal.py` | 经源码核实的命令常量与转义 | 猜测引擎语法 |
 | `packager.py` | 获取发行版、原子替换、最小 flowchart、输出静态站点 | 修改 WebGAL 引擎 |
 | `asset_pack.py` | Schema、本地路径/授权/MIME/SHA/Profile 校验与本地包初始化 | 下载素材、执行包内脚本 |
@@ -255,6 +255,11 @@ return SCRIPT_CONFIG_MAP.get(command)?.scriptType ?? commandType.say;
 
 所以 LLM 输出 `showCode:print(1);` 时，游戏会正常启动，但出现一个名叫 `showCode`
 的角色。validator 必须在打包前执行，并且不可通过“模型应该不会出错”绕过。
+
+4.6.2 还有一个已实测确认的静默错误：`say` 先继承 `stageState.showName`，只有
+`-clear` 参数才清空说话人（`packages/webgal/src/Core/gameScripts/say.ts`），
+无冒号的纯文本行则会被 parser 把整行当作 speaker。因此 validator 把 `say:`、
+`:文本`、无冒号文本与未知命令降级统一编译为 `say:文本 -clear;`。
 
 ## 8. 素材系统（Local Provider 已实现）
 
@@ -340,8 +345,10 @@ evidence 保存在 `third_party/asset-packs/`。
   WebGAL 4.6.2 确定性编译
 - v0.6.0：`--mode overview`、Overview prompt、轻量 flags、目录树/项目文件提取与
   概览专用选角
+- v0.6.1：validator 对所有旁白确定性补 `-clear`，无冒号文本统一转旁白，
+  修复 WebGAL 4.6.2 旁白继承上一句 speaker 的静默错渲染
 
-`v0.6.0` 结论：Chronicle、Overview、单本地素材包闭环和显式动态演出均已实现；
+`v0.6.1` 结论：Chronicle、Overview、单本地素材包闭环和显式动态演出均已实现；
 Quick Start 模式、Git/AI Provider 仍是计划，不得写成现有能力。
 
 动态演出已实现为显式 opt-in 功能，两种剧本模式均可使用：`--performance` 使用默认

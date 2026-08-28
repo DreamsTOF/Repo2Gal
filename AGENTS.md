@@ -11,10 +11,11 @@ Discussion、wiki 和 Release 生成项目历史视觉小说；Overview（仓库
 README、目录树、根级项目文件、Release 与 wiki 生成面向新手的“项目导览”视觉小说。
 Quick Start（贡献者上手）仍在计划中。不要擅自把 MVP 扩成通用 Galgame、RPG 或可视化 IDE。
 
-当前稳定基线为 `v0.6.0`：v0.1.0 主流程已于 2026-07-31 通过真实仓库、真实 LLM
+当前稳定基线为 `v0.6.1`：v0.1.0 主流程已于 2026-07-31 通过真实仓库、真实 LLM
 和 WebGAL 产物的端到端实测；v0.3.0 重构流程架构（显式管线 + 统一错误域 + 薄 CLI）；
 v0.4.0 实现 Asset Pack v1 本地单包闭环与内置 CC0 Chronicle 示例包；v0.5.0 实现显式
-Performance Plan v1 动态演出闭环；v0.6.0 实现仓库概览（Overview）模式。
+Performance Plan v1 动态演出闭环；v0.6.0 实现仓库概览（Overview）模式；v0.6.1 修复
+WebGAL 4.6.2 旁白继承上一句 speaker 的问题（validator 统一补 `-clear`）。
 
 项目版本严格遵循 SemVer 2.0.0。`0.y.z` 阶段兼容修复提升 PATCH，向后兼容新功能或公开
 不兼容变更提升 MINOR；`1.0.0` 后不兼容变更提升 MAJOR。发版必须同步 `pyproject.toml`、
@@ -95,7 +96,7 @@ GitHub GraphQL；禁止借此恢复通用 API 客户端、分页器、限流器�
 
 - 场景脚本是 `game/scene/*.txt`，不是 `.wg`
 - 对话是 `角色名:文本;`
-- `say:文本;` 是旁白，不是 `say:角色:文本`
+- 旁白是 `say:文本 -clear;`，不是 `say:角色:文本`；4.6.2 的 say.ts 先继承上一句 speaker，漏 `-clear` 会显示成上一句话的角色（validator 会确定性补齐）
 - 不存在可依赖的 `webgal build` / `webgal serve` npm CLI
 - 语法权威来源是 `packages/parser/src/` 和官方 demo
 
@@ -168,7 +169,7 @@ WebGAL Adapter 负责把全身原图编译为居中半身 transform，Performanc
 | `repo2gal/fetcher.py` | github-backup 适配（按模式选择 flags）；受控官方 REST 元数据；备份 JSON/Git -> RepoContext；Overview 目录树与项目文件提取 |
 | `repo2gal/generator.py` | 确定性部分：按模式选角（角色表白名单）、上下文渲染、prompt 组装 |
 | `repo2gal/llm.py` | LLM transport 薄客户端：错误包装与脱敏，与 prompt 组装分离 |
-| `repo2gal/validator.py` | WebGAL 安全子集与静默错误降级（硬边界） |
+| `repo2gal/validator.py` | WebGAL 安全子集、静默错误降级与旁白 `-clear` 归一化（硬边界） |
 | `repo2gal/webgal.py` | 从官方 parser 核实的命令常量与转义 |
 | `repo2gal/packager.py` | 官方 WebGAL 发行版缓存、原子打包、最小 flowchart 生成 |
 | `repo2gal/asset_pack.py` | Asset Pack Schema、本地安全/授权/MIME/SHA/Profile 校验与 init |

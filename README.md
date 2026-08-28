@@ -10,7 +10,7 @@
 **仓库概览（Overview）** 模式，生成给第一次接触项目的人看的“新手村向导”剧情。
 剧情素材全部来自仓库的真实源码、README、Issue、PR、Discussion、wiki 与 Release。
 
-当前版本：v0.6.0（版本历史见 [CHANGELOG.md](CHANGELOG.md)）。项目版本严格遵循
+当前版本：v0.6.1（版本历史见 [CHANGELOG.md](CHANGELOG.md)）。项目版本严格遵循
 [Semantic Versioning 2.0.0](https://semver.org/)，具体升级和同步规则见
 [CONTRIBUTING.md](CONTRIBUTING.md#版本管理)。
 
@@ -80,7 +80,7 @@ https://repo2gal.rhopaper.top/demo
 
 - [x] 统一错误体系与退出码契约、错误信息脱敏
 - [x] 显式管线（pipeline）与可注入依赖，全流程可离线端到端测试
-- [x] 离线测试套件（183 项）
+- [x] 离线测试套件（188 项）
 - [x] 文档体系：用户指南、开发规约、Agent 指南、部署文档
 - [x] GitHub Actions 离线 CI 与 `main` 成功后自动生成/部署演示（需仓库 secrets）
 - [ ] python-github-backup 真实 fixture 回归样本
@@ -210,7 +210,7 @@ GitHub REST metadata ─┘    筛选叙事素材      写剧本    收敛降级
 | `fetcher.py` | 调用 `python-github-backup`（按剧本模式选择 flags）；官方 REST 补仓库概览；构建 RepoContext（Overview 含目录树与根级项目文件） |
 | `generator.py` | 确定性部分：按模式选角（角色表白名单）、上下文渲染、prompt 组装 |
 | `llm.py` | LLM transport 薄客户端：错误包装与脱敏，与 prompt 组装分离 |
-| `validator.py` | 把脚本收敛到安全语法子集（不可绕过的硬边界） |
+| `validator.py` | 把脚本收敛到安全语法子集并给旁白补 `-clear`（不可绕过的硬边界） |
 | `packager.py` | WebGAL 发行版缓存、原子打包、最小 flowchart 生成 |
 | `asset_pack.py` | Asset Pack Schema、本地路径/授权/MIME/SHA/Profile 校验 |
 | `webgal_assets.py` | 逻辑 ID 映射、素材复制、脚本重写与第三方声明聚合 |
@@ -245,9 +245,12 @@ return SCRIPT_CONFIG_MAP.get(command)?.scriptType ?? commandType.say;  // 默认
 ```
 
 因此 LLM 幻觉出的 `showCode:print(1);` 会变成一个叫 `showCode` 的角色在说话。
-产物永远"能跑"，却处处错渲染。validator 在打包前对剧本做四件事：
+产物永远"能跑"，却处处错渲染。validator 在打包前对剧本做五件事：
 
 - 未知命令 / 未声明角色 → 降级为旁白；
+- 所有旁白补 `-clear`：WebGAL 4.6.2 的 `say` 会继承上一句说话人，
+  漏掉 `-clear` 旁白就会顶着上一个角色的名字显示；无冒号的纯文本行也会被引擎
+  当成 speaker，validator 一并改为旁白；
 - 跳转目标不存在 → 注释该行，避免玩家卡死；
 - 剥离 Markdown 代码围栏与标题噪声；
 - 缺 `end;` 自动补齐。

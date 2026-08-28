@@ -139,6 +139,22 @@ def test_dry_run_with_script_validates_without_packaging(tmp_path):
 
 # --- strict ---
 
+def test_narration_after_dialogue_is_cleared_before_packaging(tmp_path):
+    """WebGAL say 继承 speaker；pipeline 打包前必须保证旁白带 -clear。"""
+    llm = FakeLLM(text="widget:你好;\nsay:这是旁白;\nend;\n")
+    captured = {}
+
+    def package_fn(clean, output_dir, **kwargs):
+        captured["clean"] = clean
+        return output_dir
+
+    artifacts = run(tmp_path, llm=llm, package_fn=package_fn)
+
+    assert "widget:你好;" in artifacts.clean
+    assert "say:这是旁白 -clear;" in artifacts.clean
+    assert captured["clean"] == artifacts.clean
+
+
 def test_strict_raises_validation_failed_on_downgrade(tmp_path):
     llm = FakeLLM(text="say:你好;\nunknownCommand:foo;\nend;\n")
     options = make_options(tmp_path, strict=True)
@@ -341,7 +357,7 @@ def test_invalid_performance_falls_back_but_strict_performance_fails(tmp_path):
         package_fn=lambda clean, output, **kw: output,
     )
     assert "pixiPerform:snow;" in artifacts.clean
-    assert "say:这是现成剧本。;" in artifacts.clean
+    assert "say:这是现成剧本。 -clear;" in artifacts.clean
     assert artifacts.performance_report.degraded is True
 
     strict_options = make_options(tmp_path, script=script, performance=True, strict_performance=True)
@@ -472,7 +488,7 @@ def test_performance_llm_failure_falls_back_but_strict_performance_fails(tmp_pat
     )
     assert artifacts.performance_report.degraded is True
     assert "pixiPerform:snow;" in artifacts.clean
-    assert "say:这是现成剧本。;" in artifacts.clean
+    assert "say:这是现成剧本。 -clear;" in artifacts.clean
 
     strict_options = make_options(tmp_path, script=script, performance=True, strict_performance=True)
     with pytest.raises(ValidationFailed, match="strict-performance"):

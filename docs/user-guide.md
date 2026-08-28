@@ -143,7 +143,8 @@ manifest、LICENSE、NOTICE 与 evidence 保存到 `third_party/asset-packs/`。
 **Q：生成的剧本靠谱吗？**
 所有事实来自仓库真实数据；生成后强制过 validator——WebGAL 对未知命令不报错，
 而是把命令名当角色名渲染，因此 validator 是硬边界：白名单外的命令一律降级为旁白，
-跳转目标缺失会注释，缺 `end;` 会补齐。`--strict` 下存在任何降级即拒绝打包。
+所有旁白统一补 `-clear`（否则会继承上一句角色的名字），跳转目标缺失会注释，
+缺 `end;` 会补齐。`--strict` 下存在任何降级即拒绝打包。
 
 **Q：生成作品的版权归谁？**
 Repo2Gal 程序代码为 GPL-3.0；WebGAL 引擎为 MPL-2.0；剧本内容按你所选模型的服务条款。

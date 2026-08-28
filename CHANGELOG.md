@@ -4,6 +4,17 @@
 [Semantic Versioning 2.0.0](https://semver.org/)；`0.y.z` 阶段的新功能提升 `MINOR`，
 兼容缺陷修复提升 `PATCH`，公开不兼容变更至少提升 `MINOR`。
 
+## v0.6.1 — 2026-08-28
+
+**修复旁白继承上一句说话人**：
+
+- WebGAL 4.6.2 的 `say` 先继承 `stageState.showName`，只有 `-clear` 才清空说话人；
+  无冒号的纯文本行则会被 parser 把整行当成 speaker；
+- validator 现在对所有旁白（`say:`、`:文本`、无冒号文本、未知命令降级）确定性输出
+  `say:文本 -clear;`，LLM 和 `--script` 输入都不可绕过；
+- 两个 prompt 模板改为显式要求 `say:文本 -clear;`，并同步 WebGAL 语法速查表；
+- 离线测试扩充到 188 项。
+
 ## v0.6.0 — 2026-08-26
 
 **仓库概览（Overview）模式**：

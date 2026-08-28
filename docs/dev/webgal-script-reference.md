@@ -4,6 +4,7 @@
 > 而非来自 LLM 记忆。核对源：
 > - `packages/parser/src/config/scriptConfig.ts`（命令全集）
 > - `packages/parser/src/scriptParser/{scriptParser,commandParser,contentParser}.ts`（解析规则）
+> - `packages/webgal/src/Core/gameScripts/say.ts`（`say` 的 speaker 继承与 `-clear`）
 > - `packages/webgal/public/game/scene/*.txt`（官方 demo）
 >
 > ⚠️ `OpenWebGAL/script-specification` 仓库目前只有流程说明，**没有实际规范内容**，不要指望它。
@@ -15,7 +16,7 @@
 | 常见错误说法 | 真相 |
 |---|---|
 | 场景文件是 `.wg` | ❌ 是 **`.txt`**，放在 `game/scene/` |
-| 对话写 `say:角色:文本` | ❌ 对话是 **`角色名:文本;`**；`say:文本;` 是**旁白**（无 speaker） |
+| 对话写 `say:角色:文本` | ❌ 对话是 **`角色名:文本;`**；旁白是 **`say:文本 -clear;`**（见 §2.1，漏 `-clear` 会继承上一句说话人） |
 | 有 `webgal build` / `webgal serve` CLI | ❌ 不存在。npm `webgal` 是 0.0.0 占位包，`WebGAL-Server` 2022 年已 archived。<br>正确做法是**静态模板克隆 + 文件覆盖**，然后任意静态服务器托管 |
 
 ---
@@ -70,13 +71,41 @@ if (type === commandType.say && commandRaw !== 'say') {
 | 输入 | 实际渲染 |
 |---|---|
 | `WebGAL:你好;` | 角色「WebGAL」说「你好」✅ |
-| `say:你好;` | 旁白「你好」（无角色名）✅ |
-| `:你好;` | 旁白「你好」✅ |
+| `say:你好 -clear;` | 旁白「你好」（无角色名）✅ |
+| `:你好 -clear;` | 旁白「你好」✅ |
 | `showCode:print(1);` | ❌ 角色「showCode」说「print(1)」——**LLM 幻觉命令的典型下场** |
-| `say:小明:你好;` | ❌ 旁白显示字面文本「小明:你好」 |
+| `say:小明:你好 -clear;` | ❌ 旁白显示字面文本「小明:你好」 |
 
 > **这是 Repo2Gal 必须做 validator 的根本原因**：产物永远"能跑"，但会静默错渲染。
 > 靠肉眼看游戏发现问题的成本极高，必须在生成后、打包前用白名单校验。
+
+### 2.1 旁白会继承上一句说话人，必须 `-clear`
+
+`packages/webgal/src/Core/gameScripts/say.ts`（4.6.2）对 speaker 的处理是**先继承**：
+
+```ts
+let showName = stageState.showName; // 先默认继承
+if (speaker !== null) {
+  showName = speaker;
+}
+if (clear) {
+  showName = '';
+}
+stageStateManager.setStage('showName', showName);
+```
+
+`say:文本;` 没有 speaker 也没有 clear，于是显示的是**上一句角色名**。
+正确写法是：
+
+```
+角色A:你好;
+say:这是旁白 -clear;      ← 不清除就会顶着「角色A」的名字显示
+```
+
+无冒号的纯文本行更糟：`commandParser.ts` 会把整行当作 speaker，
+同一段文字又出现在台词里。因此 Repo2Gal 的 validator 会把所有旁白
+（含 `say:`、`:文本`、无冒号文本、未知命令降级）确定性改写为
+`say:文本 -clear;`，LLM 和 `--script` 输入都不例外。
 
 ---
 
@@ -86,7 +115,7 @@ if (type === commandType.say && commandRaw !== 'say') {
 
 | 命令 | 示例 | 说明 |
 |---|---|---|
-| `say` | `say:文本;` | 旁白。等价于 `:文本;` |
+| `say` | `say:文本 -clear;` | 旁白；等价于 `:文本 -clear;`。`-clear` 必带，否则继承上一句 speaker |
 | *(角色名)* | `WebGAL:文本 -v1.wav -left;` | 对话。任何非命令词都作为 speaker |
 | `changeBg` | `changeBg:bg.webp -next;` | 切背景 → `game/background/` |
 | `changeFigure` | `changeFigure:stand.webp -left;` | 切立绘 → `game/figure/` |
@@ -216,7 +245,7 @@ changeBg:文件名.webp -next;
 changeFigure:立绘文件名.webp -left;
 bgm:文件名.mp3;
 角色名:台词;
-say:旁白;
+say:旁白 -clear;
 intro:黑屏文字|第二行;
 label:标签名;
 jumpLabel:标签名;
@@ -225,6 +254,7 @@ end;
 ```
 
 不在此列的一律由 validator 降级为旁白，绝不放行到产物里。
+模型即使漏写 `-clear`，validator 也会为所有旁白确定性补上。
 
 使用 Asset Pack 时，LLM 与 validator 阶段的三个资源参数是逻辑 ID（例如
 `changeBg:background.archive;`），打包阶段再由 `webgal_assets.py` 改写成上述裸文件名。
