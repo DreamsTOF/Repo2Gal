@@ -260,13 +260,16 @@ end;
 `changeBg:background.archive;`），打包阶段再由 `webgal_assets.py` 改写成上述裸文件名。
 未声明 ID 或素材类型错配会被 validator 注释降级，不会进入 WebGAL 产物。
 
-动态演出使用 `--performance` 时，第二次 LLM 不直接生成本文件中的 WebGAL 命令，而是输出
-`Performance Plan v1` 语义 JSON。`repo2gal/performance.py` 再根据固定的 WebGAL `4.6.2`
-能力表生成 `setTransform`、`setTempAnimation`、
-`pixiInit` 和 `pixiPerform`。模型不能提供坐标、关键帧、runtime target 或 `-next`、
-`-parallel`、`-continue` 参数。设计和动作 Schema 见 `docs/dev/performance-plan-spec.md`。
-`screen.transition` 是例外：编译器不在台词前追加独立动画，而是修改对应的背景命令，例如
+动态演出不再由 LLM 直出 WebGAL 命令：三轮生成中的第三轮输出 `Director Plan v1` 语义 JSON，
+`repo2gal/director.py` 再根据固定的 WebGAL `4.6.2` 能力表生成 `setTransform`、
+`setTempAnimation`、`pixiInit` 和 `pixiPerform`。模型不能提供坐标、关键帧、runtime target
+或 `-next`、`-parallel`、`-continue` 参数。设计和动作 Schema 见 `docs/dev/director-plan-spec.md`。
+`screen.transition` 是例外：编译器不在台词前追加独立动画，而是修改同 beat 的背景命令，例如
 `changeBg:bg.webp -enter=shockwaveIn -enterDuration=1200;`，保证切换和效果同时发生。
+
+编译产物由确定性代码生成，经 validator 校验时使用比 `SAFE_COMMANDS` 更宽的
+`COMPILE_COMMANDS` 白名单（含上述四个命令）；`--script` 用户脚本仍收敛在
+`SAFE_COMMANDS` 内。validator 对两类输入都是硬边界。
 
 Asset Pack 角色声明 `framing.mode=upper-body` 时，WebGAL Adapter 会在最终脚本中确定性追加：
 

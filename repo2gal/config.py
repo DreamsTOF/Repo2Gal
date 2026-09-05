@@ -14,6 +14,9 @@ DEFAULT_BASE_URL = "https://api.deepseek.com/v1"
 DEFAULT_MODEL = "deepseek-v4-pro"
 DEFAULT_LLM_TIMEOUT = 300
 
+# Director 流程：第三轮导演 JSON 校验失败时的最大重试次数（0 表示不重试）。
+DEFAULT_FORMAT_RETRIES = 2
+
 # 剧本生成模式。Chronicle（编年史）是 v0.1.0 起的默认模式；
 # Overview（仓库概览）是 v0.6.0 新增的第二种游戏模式。
 GAME_MODES = ("chronicle", "overview")

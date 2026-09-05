@@ -12,6 +12,7 @@ import pytest
 
 import repo2gal.fetcher as fetcher
 from repo2gal.config import DEFAULT_GAME_MODE, GAME_MODES, GAME_MODE_TITLES
+from repo2gal.director import DIRECTOR_SCHEMA_URI
 from repo2gal.errors import FetchError, UsageError
 from repo2gal.fetcher import (
     NARRATIVE_BACKUP_FLAGS,
@@ -24,7 +25,6 @@ from repo2gal.fetcher import (
     fetch_context,
 )
 from repo2gal.generator import build_cast, build_prompt, render_overview_context
-from repo2gal.performance import extract_beats
 from repo2gal.pipeline import RunOptions, run_pipeline
 
 EXAMPLE_PACK = "builtin:cc0-chronicle"
@@ -94,9 +94,8 @@ def test_build_prompt_uses_overview_template_and_context():
     assert "新手村向导" in prompt
     assert "仓库概览" in prompt
     assert "先看功能" in prompt or "先看安装" in prompt
-    assert "必须写成 `角色名:台词`" in prompt
-    assert "不要输出任何 `say:` 行" in prompt
-    assert "禁止输出 `say:` 行" in prompt
+    assert "角色名:台词" in prompt
+    assert "不要写没有说话人的旁白" in prompt
     assert "src/" in prompt
     assert "编年史" not in prompt.split("# 任务")[0]
     with pytest.raises(UsageError, match="未知剧本模式"):
@@ -197,18 +196,50 @@ def test_fetch_context_keeps_full_flags_for_chronicle(tmp_path, monkeypatch):
 
 # --- pipeline ---
 
+import json  # noqa: E402
+
+OVERVIEW_DRAFT = "[B]\nwidget:你好，我是 widget。\n[B]\nwidget:先看门牌。\n"
+OVERVIEW_ANNOTATIONS = ""
+
+OVERVIEW_PLAN = {
+    "$schema": DIRECTOR_SCHEMA_URI,
+    "schemaVersion": 1,
+    "sceneId": "start",
+    "storyHash": "sha256:" + "0" * 64,
+    "profile": "chronicle-subtle",
+    "title": "Widget 导览",
+    "subtitle": "",
+    "beats": [
+        {"id": "b000001", "kind": "dialogue", "speaker": "widget", "text": "你好，我是 widget。"},
+        {"id": "b000002", "kind": "dialogue", "speaker": "widget", "text": "先看门牌。"},
+    ],
+}
+
+
 class FakeLLM:
-    def __init__(self, text="say:这是概览。\nend;\n"):
-        self.text = text
+    def __init__(self, texts=None):
+        self.texts = list(texts) if texts is not None else []
         self.calls = []
 
     def complete(self, prompt, *, temperature=0.8):
-        self.calls.append(prompt)
-        return self.text
+        self.calls.append((prompt, temperature))
+        if not self.texts:
+            raise AssertionError(f"FakeLLM 响应耗尽（第 {len(self.calls)} 次调用）")
+        return self.texts.pop(0)
+
+
+def overview_llm():
+    return FakeLLM(
+        [
+            OVERVIEW_DRAFT,
+            OVERVIEW_ANNOTATIONS,
+            json.dumps(OVERVIEW_PLAN, ensure_ascii=False),
+        ]
+    )
 
 
 def test_pipeline_overview_runs_mode_specific_prompt_and_packaging(tmp_path):
-    llm = FakeLLM()
+    llm = overview_llm()
     captured = {}
     options = RunOptions(
         owner="acme",
@@ -238,12 +269,15 @@ def test_pipeline_overview_runs_mode_specific_prompt_and_packaging(tmp_path):
     )
 
     assert captured["fetch_mode"] == "overview"
+    assert len(llm.calls) == 3
     assert "新手村向导" in artifacts.prompt
     assert "先看功能" in artifacts.prompt or "先看安装" in artifacts.prompt
     assert "alice" not in artifacts.cast.names
+    assert artifacts.director_report.semantic_valid is True
     assert captured["game_name"] == "acme/widget 仓库概览"
     assert captured["game_key"] == "repo2gal_acme_widget_overview"
     assert captured["clean"].endswith("end;\n")
+    assert "say:" not in captured["clean"]  # Overview 不使用旁白
 
 
 def test_pipeline_overview_with_asset_pack_advertises_logical_ids(tmp_path):
@@ -275,34 +309,15 @@ def test_pipeline_overview_with_asset_pack_advertises_logical_ids(tmp_path):
     assert artifacts.output_dir is None
 
 
-def test_pipeline_overview_supports_performance_plan(tmp_path):
-    script = tmp_path / "story.txt"
-    script.write_text("say:第一句。\nend;\n", encoding="utf-8")
-    manifest = extract_beats("say:第一句。;\nend;\n", speakers={"widget"})
-    plan = {
-        "$schema": "https://repo2gal.dev/schemas/performance-plan/v1.json",
-        "schemaVersion": 1,
-        "sceneId": "start",
-        "storyHash": manifest.story_hash,
-        "profile": "chronicle-subtle",
-        "cues": [
-            {
-                "id": "cue000001",
-                "beatId": "b000001",
-                "anchor": "during",
-                "actions": [{"kind": "screen.effect", "preset": "snow", "intensity": "subtle"}],
-            }
-        ],
+def test_pipeline_overview_compiles_screen_effect(tmp_path):
+    plan = json.loads(json.dumps(OVERVIEW_PLAN, ensure_ascii=False))
+    plan["beats"][1]["cue"] = {
+        "anchor": "during",
+        "actions": [{"kind": "screen.effect", "preset": "snow", "intensity": "subtle"}],
     }
-
-    class TwoStageLLM:
-        def __init__(self):
-            self.calls = []
-
-        def complete(self, prompt, *, temperature=0.8):
-            self.calls.append((prompt, temperature))
-            return __import__("json").dumps(plan)
-
+    llm = FakeLLM(
+        [OVERVIEW_DRAFT, OVERVIEW_ANNOTATIONS, json.dumps(plan, ensure_ascii=False)]
+    )
     options = RunOptions(
         owner="acme",
         repo="widget",
@@ -310,19 +325,46 @@ def test_pipeline_overview_supports_performance_plan(tmp_path):
         backup_root=tmp_path / "backup",
         mode="overview",
         reuse_backup=True,
-        script=script,
-        performance=True,
         api_key=None,
     )
     artifacts = run_pipeline(
         options,
-        llm_client=TwoStageLLM(),
+        llm_client=llm,
         fetch_fn=lambda *args: make_ctx(),
         package_fn=lambda clean, output, **kwargs: output,
     )
     assert "pixiInit;" in artifacts.clean
-    assert artifacts.performance_report is not None
-    assert artifacts.performance_report.semantic_valid is True
+    assert "pixiPerform:snow;" in artifacts.clean
+    assert artifacts.director_report is not None
+    assert artifacts.director_report.semantic_valid is True
+
+
+def test_pipeline_overview_rejects_narration_and_falls_back_to_guide(tmp_path):
+    """Overview 禁止旁白：带 narration 的导演 JSON 校验失败，重试耗尽走草稿兜底。"""
+    plan = json.loads(json.dumps(OVERVIEW_PLAN, ensure_ascii=False))
+    plan["beats"][0] = {"id": "b000001", "kind": "narration", "speaker": None, "text": "这是旁白。"}
+    llm = FakeLLM(
+        [OVERVIEW_DRAFT, OVERVIEW_ANNOTATIONS, json.dumps(plan, ensure_ascii=False)] + ["bad"] * 2
+    )
+    options = RunOptions(
+        owner="acme",
+        repo="widget",
+        output_dir=tmp_path / "out",
+        backup_root=tmp_path / "backup",
+        mode="overview",
+        reuse_backup=True,
+        api_key=None,
+    )
+    artifacts = run_pipeline(
+        options,
+        llm_client=llm,
+        fetch_fn=lambda *args: make_ctx(),
+        package_fn=lambda clean, output, **kwargs: output,
+    )
+    assert artifacts.director_plan is None
+    assert artifacts.director_report.degraded is True
+    assert "widget:" in artifacts.clean
+    assert "say:" not in artifacts.clean  # 兜底同样遵守 Overview 无旁白
 
 
 def test_pipeline_rejects_unknown_mode_before_fetch(tmp_path):

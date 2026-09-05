@@ -40,7 +40,7 @@ PR 不会获得生产 secrets，也不会部署。Deploy job 使用 GitHub `prod
 
 | Secret | 用途 |
 |---|---|
-| `REPO2GAL_API_KEY` | LLM 1 剧情生成和 LLM 2 Performance Plan |
+| `REPO2GAL_API_KEY` | 三轮 LLM（创作草稿、演出批注、导演 JSON） |
 | `VERCEL_TOKEN` | 链接并部署 `rhopapers-projects/repo2gal-demo` |
 
 GitHub 数据访问使用 Actions 自动提供的 `github.token`，不要另建长期 GitHub PAT。Workflow
@@ -70,10 +70,8 @@ Settings 的 Tokens 页面创建，并能访问 `rhopapers-projects`。
 ```bash
 repo2gal RhoPaper/Repo2Gal \
   --asset-pack builtin:cc0-chronicle --public-assets \
-  --performance --strict --strict-performance \
-  --save-beat-manifest .repo2gal/audit/beat-manifest.json \
-  --save-performance-plan .repo2gal/audit/performance-plan.json \
-  --save-performance-report .repo2gal/audit/performance-report.json \
+  --profile chronicle-subtle --strict \
+  --save-stage-outputs .repo2gal/audit/stages \
   --output output/Repo2Gal
 ```
 
@@ -81,13 +79,12 @@ Workflow 缓存固定 WebGAL 模板和 `python-github-backup` 原始层，但不
 每次部署仍会让上游增量更新 GitHub 数据。生成或严格校验失败时不会执行 Vercel 部署，已有
 生产版本保持不变。
 
-每次成功生成会保留 30 天 GitHub Artifact：Beat Manifest、Performance Plan、Performance
-Report、最终 `start.txt` 和第三方声明。
+每次成功生成会保留 30 天 GitHub Artifact：草稿、演出批注、导演 JSON 各次尝试与反馈、
+导演校验报告、最终 `start.txt` 和第三方声明。
 
-Performance Plan 中 `screen.transition` 的 `phase`、`preset` 和 `duration` 允许模型省略；
-普通代码会在 `enter ↔ shockwaveIn`、`exit ↔ shockwaveOut` 之间双向推导，并使用 `medium`
-默认时长。这类机械补全只产生 warning，不会让严格部署失败；冲突组合、未知能力、无目标
-背景和角色状态冲突仍会阻止生产部署。
+导演 JSON（第三轮）校验失败时会自动打回重试（默认 2 次），反馈为逐条结构化错误；
+重试耗尽后改用第一轮草稿的确定性兜底编译，保证产物仍可游玩。`--strict` 只控制最终
+WebGAL validator 的降级是否拒绝产物。
 
 `/demo` 路径由 Vercel 路由配置实现：游戏静态文件部署在站点根目录，
 `vercel.json` 把 `/demo` 重写到根文件，因此**产物内部无需改动**。

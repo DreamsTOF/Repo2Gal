@@ -1,33 +1,86 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://repo2gal.dev/schemas/performance-plan/v1.json",
-  "title": "Repo2Gal Performance Plan v1",
+  "$id": "https://repo2gal.dev/schemas/director/v1.json",
+  "title": "Repo2Gal Director Plan v1",
   "type": "object",
   "additionalProperties": false,
-  "required": ["$schema", "schemaVersion", "sceneId", "storyHash", "profile", "cues"],
+  "required": ["$schema", "schemaVersion", "sceneId", "storyHash", "profile", "beats"],
   "properties": {
     "$schema": {
       "type": "string",
-      "const": "https://repo2gal.dev/schemas/performance-plan/v1.json"
+      "const": "https://repo2gal.dev/schemas/director/v1.json"
     },
     "schemaVersion": {"const": 1},
     "sceneId": {"type": "string", "pattern": "^[A-Za-z0-9._-]{1,80}$"},
     "storyHash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
     "profile": {"enum": ["chronicle-subtle", "chronicle-cinematic"]},
-    "cues": {
+    "title": {"type": "string", "maxLength": 200},
+    "subtitle": {"type": "string", "maxLength": 200},
+    "beats": {
       "type": "array",
-      "maxItems": 256,
-      "items": {"$ref": "#/$defs/cue"}
+      "minItems": 1,
+      "maxItems": 512,
+      "items": {"$ref": "#/$defs/beat"}
     }
   },
   "$defs": {
+    "beat": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^b[0-9]{6}$"},
+        "kind": {"enum": ["dialogue", "narration", "choice"]},
+        "speaker": {"$ref": "#/$defs/speaker"},
+        "text": {"type": "string", "maxLength": 2000},
+        "stage": {"$ref": "#/$defs/stage"},
+        "cue": {"$ref": "#/$defs/cue"},
+        "choices": {"type": ["array", "null"], "maxItems": 8, "items": {"$ref": "#/$defs/choiceOption"}},
+        "jump": {"type": ["string", "null"], "pattern": "^b[0-9]{6}$"}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"kind": {"const": "dialogue"}}},
+          "then": {"required": ["speaker", "text"]}
+        },
+        {
+          "if": {"properties": {"kind": {"const": "narration"}}},
+          "then": {"required": ["text"]}
+        },
+        {
+          "if": {"properties": {"kind": {"const": "choice"}}},
+          "then": {"required": ["choices"]}
+        }
+      ]
+    },
+    "speaker": {
+      "type": ["string", "null"],
+      "minLength": 1,
+      "maxLength": 80,
+      "pattern": "^[^:;\\-\\r\\n]+$"
+    },
+    "stage": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "background": {"type": ["string", "null"], "maxLength": 200},
+        "bgm": {"type": ["string", "null"], "maxLength": 200}
+      }
+    },
+    "choiceOption": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["text", "target"],
+      "properties": {
+        "text": {"type": "string", "minLength": 1, "maxLength": 120},
+        "target": {"type": "string", "pattern": "^b[0-9]{6}$"}
+      }
+    },
     "cue": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "beatId", "anchor", "actions"],
+      "required": ["anchor", "actions"],
       "properties": {
-        "id": {"type": "string", "pattern": "^cue[0-9]{6}$"},
-        "beatId": {"type": "string", "pattern": "^b[0-9]{6}$"},
         "anchor": {"enum": ["before", "during", "after"]},
         "actions": {
           "type": "array",

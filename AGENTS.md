@@ -11,12 +11,14 @@ Discussion、wiki 和 Release 生成项目历史视觉小说；Overview（仓库
 README、目录树、根级项目文件、Release 与 wiki 生成面向新手的“项目导览”视觉小说。
 Quick Start（贡献者上手）仍在计划中。不要擅自把 MVP 扩成通用 Galgame、RPG 或可视化 IDE。
 
-当前稳定基线为 `v0.6.2`：v0.1.0 主流程已于 2026-07-31 通过真实仓库、真实 LLM
+当前稳定基线为 `v0.7.0`：v0.1.0 主流程已于 2026-07-31 通过真实仓库、真实 LLM
 和 WebGAL 产物的端到端实测；v0.3.0 重构流程架构（显式管线 + 统一错误域 + 薄 CLI）；
 v0.4.0 实现 Asset Pack v1 本地单包闭环与内置 CC0 Chronicle 示例包；v0.5.0 实现显式
 Performance Plan v1 动态演出闭环；v0.6.0 实现仓库概览（Overview）模式；v0.6.1 修复
 WebGAL 4.6.2 旁白继承上一句 speaker 的问题（validator 统一补 `-clear`）；v0.6.2 明确
-Overview 模式不使用旁白，向导台词全部由角色亲口说出。
+Overview 模式不使用旁白，向导台词全部由角色亲口说出；v0.7.0 把剧本生成重构为三轮 LLM
+（自由创作草稿 → 自然语言演出批注 → Director Plan JSON）+ 确定性编译 + 有界重试，
+合并原 `--performance` 通道并删除插入式合并。
 
 项目版本严格遵循 SemVer 2.0.0。`0.y.z` 阶段兼容修复提升 PATCH，向后兼容新功能或公开
 不兼容变更提升 MINOR；`1.0.0` 后不兼容变更提升 MAJOR。发版必须同步 `pyproject.toml`、
@@ -105,11 +107,13 @@ GitHub GraphQL；禁止借此恢复通用 API 客户端、分页器、限流器�
 
 ### LLM
 
-使用 OpenAI-compatible Chat Completions 协议。LLM 只负责剧本创作。
+使用 OpenAI-compatible Chat Completions 协议。LLM 只负责三轮生成式任务：剧情草稿创作
+（自由格式，`[B]` 节拍锚点）、自然语言演出批注、受限 Director Plan JSON。
 
 LLM 不负责：GitHub 抓取、资源路径决策、角色白名单、流程跳转校验、许可证判断、WebGAL
-原始演出命令、坐标、时序和打包。第二次 LLM 只能输出 Performance Plan 语义 JSON，仍需
-普通代码做 Schema/状态机校验和编译。
+原始演出命令、坐标、时序和打包。Director Plan JSON 必须经过独立的 Schema、能力表、
+角色状态机和预算校验，之后由普通代码确定性编译为 WebGAL；校验失败只允许有界重试
+（`--format-retries`，默认 2 次），重试耗尽走草稿确定性兜底。
 所有可确定的工作必须由普通代码完成。
 
 ## 4. 架构约束
@@ -117,20 +121,22 @@ LLM 不负责：GitHub 抓取、资源路径决策、角色白名单、流程跳
 ### 确定性与生成式职责分离
 
 ```text
-python-github-backup -> RepoContext -> LLM 1 -> validator -> Beat Manifest
-      确定性              确定性          非确定性      确定性       确定性
-                                      -> LLM 2 -> Performance Validator -> WebGAL compiler
-                                         非确定性       确定性              确定性
+python-github-backup -> RepoContext -> 三轮 LLM -> Director 校验 -> WebGAL 编译 -> validator -> 打包
+      确定性              确定性      非确定性        确定性          确定性        确定性      确定性
+             创作草稿 / 演出批注 / 导演 JSON（受限语义，重试有界）
 ```
 
-不要引入 Agent tool-calling 循环来替代确定性流水线。当前流程是一条直线，不需要 PocketFlow、
-LangChain 或复杂 DAG 框架。只有出现真实的并行分章、map-reduce 或动态路由需求后才重新评估。
+不要引入 Agent tool-calling 循环来替代确定性流水线。主线是一条直线，唯一环路是第三轮
+导演 JSON 的有界重试（`--format-retries`，默认 2 次，无工具调用、无动态路由），不需要
+PocketFlow、LangChain 或复杂 DAG 框架。只有出现真实的并行分章、map-reduce 或动态路由
+需求后才重新评估。
 
 ### Validator 不可绕过
 
 WebGAL 会把未知命令静默解释为 speaker，不会报错。因此“页面能打开”不代表脚本正确。
-剧情脚本等 WebGAL 文本输出打包前必须经过 `validator.sanitize()`；Performance Plan JSON
-必须经过独立的 Schema、能力表、角色状态机和预算校验。
+任何剧本（确定性编译产物或 `--script`）打包前必须经过 `validator.sanitize()`；Director
+Plan JSON 必须经过独立的 Schema、能力表、角色状态机和预算校验。编译产物使用
+`COMPILE_COMMANDS` 白名单，`--script` 用户脚本仍收敛在 `SAFE_COMMANDS`。
 
 角色表由确定性代码生成并作为 validator 白名单。不得允许 LLM 无约束创建角色名。
 
@@ -157,7 +163,7 @@ WebGAL 会把未知命令静默解释为 speaker，不会报错。因此“页�
 再由 WebGAL Adapter 转成 `game/background/archive.webp`。
 
 角色默认构图使用引擎无关归一化 framing 元数据，不在素材包中硬编码 WebGAL 坐标；
-WebGAL Adapter 负责把全身原图编译为居中半身 transform，Performance 动画必须保留该构图。
+WebGAL Adapter 负责把全身原图编译为居中半身 transform，演出动画必须保留该构图。
 
 程序采用 GPL-3.0 不会自动把外部媒体变成 GPL。必须保留各素材许可证；v0.4.0 打包器会
 生成 `THIRD_PARTY_NOTICES.md`、补入 MPL-2.0 正文并保留素材原始授权材料。项目根目录
@@ -168,20 +174,23 @@ WebGAL Adapter 负责把全身原图编译为居中半身 transform，Performanc
 | 路径 | 职责 |
 |---|---|
 | `repo2gal/fetcher.py` | github-backup 适配（按模式选择 flags）；受控官方 REST 元数据；备份 JSON/Git -> RepoContext；Overview 目录树与项目文件提取 |
-| `repo2gal/generator.py` | 确定性部分：按模式选角（角色表白名单）、上下文渲染、prompt 组装 |
+| `repo2gal/generator.py` | 确定性部分：按模式选角（角色表白名单）、上下文渲染、第一轮创作 prompt 组装 |
+| `repo2gal/director.py` | 草稿规范化、批注/导演 JSON prompt、Director Plan 校验、确定性 WebGAL 编译、重试反馈与草稿兜底 |
 | `repo2gal/llm.py` | LLM transport 薄客户端：错误包装与脱敏，与 prompt 组装分离 |
 | `repo2gal/validator.py` | WebGAL 安全子集、静默错误降级与旁白 `-clear` 归一化（硬边界） |
-| `repo2gal/webgal.py` | 从官方 parser 核实的命令常量与转义 |
+| `repo2gal/webgal.py` | 从官方 parser 核实的命令常量（SAFE/COMPILE 白名单）与转义 |
 | `repo2gal/packager.py` | 官方 WebGAL 发行版缓存、原子打包、最小 flowchart 生成 |
 | `repo2gal/asset_pack.py` | Asset Pack Schema、本地安全/授权/MIME/SHA/Profile 校验与 init |
 | `repo2gal/webgal_assets.py` | 逻辑 ID 映射、素材复制、脚本重写与第三方声明聚合 |
-| `repo2gal/performance.py` | Beat Manifest、Performance Plan 校验、角色状态机与确定性 WebGAL 编译 |
-| `repo2gal/pipeline.py` | 流程编排唯一持有者：四模式矩阵与阶段产物传递 |
-| `repo2gal/config.py` | 默认值、环境解析与路径常量单一来源 |
+| `repo2gal/performance.py` | 演出编译内核：能力表、profile、动作级 WebGAL 编译与共享状态工具 |
+| `repo2gal/pipeline.py` | 流程编排唯一持有者：四模式矩阵、三轮生成与有界重试、阶段产物传递 |
+| `repo2gal/config.py` | 默认值（含剧本模式与重试次数）、环境解析与路径常量单一来源 |
 | `repo2gal/errors.py` | 统一错误类型 -> 退出码契约与集中脱敏 |
 | `repo2gal/cli.py` | CLI 参数解析与结果渲染（不含流程逻辑） |
-| `repo2gal/prompts/chronicle.md` | Chronicle 生成约束 |
-| `repo2gal/prompts/overview.md` | Overview 生成约束 |
+| `repo2gal/prompts/chronicle.md` | Chronicle 第一轮自由创作草稿约束 |
+| `repo2gal/prompts/overview.md` | Overview 第一轮自由创作草稿约束 |
+| `repo2gal/prompts/annotations.md` | 第二轮自然语言演出批注约束 |
+| `repo2gal/prompts/director.md` | 第三轮 Director Plan JSON 约束 |
 | `tests/` | 离线测试，不应依赖 GitHub 或 LLM 网络 |
 
 ## 7. 开发环境与命令
@@ -224,9 +233,15 @@ export REPO2GAL_API_KEY=sk_xxx
 - 全量大仓库备份可能很慢、很大；依赖上游增量机制，不自己再写缓存协议。
 - Quick Start 模式未实现；两个现有模式都仍是单场景产物。
 - Overview 在线采集使用轻量 flags（源码/Release/wiki），复用完整备份时跳过社区 JSON 解析。
-- 动态演出必须显式传 `--performance`；默认 profile 为 `chronicle-subtle`；性能审计 JSON
-  只有指定 `--save-beat-manifest`、`--save-performance-plan` 或 `--save-performance-report`
+- 演出随三轮生成默认内建；profile 为 `chronicle-subtle`（`--profile` 可换 cinematic）；
+  阶段产物（草稿/批注/导演 JSON 各次尝试/反馈/报告）只有指定 `--save-stage-outputs`
   时才写入。
+- 三轮生成单次运行最多 3 + `--format-retries` 次 LLM 调用，token 成本约为旧单轮的
+  2.5 倍起；大仓库草稿较长时注意第三轮上下文长度。
+- RP 圆桌模式（`--rp`）为计划：多角色独立上下文、角色以自身视角互动生成剧本，
+  依赖外部 KiMo 引擎（用户自有独立包，多 AI 角色叙事引擎）。KiMo 修整到首个可用
+  版本（LICENSE/git/Linux 测试/稳定 core API）后，Repo2Gal 以可选 extra + 薄适配层
+  接入，只复用其 engine core，不在本仓库重写 arbiter/memory/context 那套。
 
 ## 10. 不要做的事
 

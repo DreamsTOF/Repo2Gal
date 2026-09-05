@@ -107,22 +107,18 @@ jobs:
           .venv/bin/repo2gal RhoPaper/Repo2Gal \
             --asset-pack builtin:cc0-chronicle \
             --public-assets \
-            --performance \
+            --profile chronicle-subtle \
             --strict \
-            --strict-performance \
-            --save-beat-manifest .repo2gal/audit/beat-manifest.json \
-            --save-performance-plan .repo2gal/audit/performance-plan.json \
-            --save-performance-report .repo2gal/audit/performance-report.json \
+            --save-stage-outputs .repo2gal/audit/stages \
             --output output/Repo2Gal
 
       - name: Verify generated demo
         run: |
           test -s output/Repo2Gal/index.html
           test -s output/Repo2Gal/game/scene/start.txt
-          test -s .repo2gal/audit/performance-report.json
-          grep -q "repo2gal performance" output/Repo2Gal/game/scene/start.txt
-          grep -q -- "-enter=shockwaveIn" output/Repo2Gal/game/scene/start.txt
-          grep -q '"degraded": false' .repo2gal/audit/performance-report.json
+          test -s .repo2gal/audit/stages/03-director-report.json
+          grep -q "end;" output/Repo2Gal/game/scene/start.txt
+          grep -q '"degraded": false' .repo2gal/audit/stages/03-director-report.json
 
       - name: Add Vercel routes
         run: cp deploy/vercel.json output/Repo2Gal/vercel.json
@@ -135,7 +131,7 @@ jobs:
           retention-days: 30
           if-no-files-found: warn
           path: |
-            .repo2gal/audit/*.json
+            .repo2gal/audit/**
             output/Repo2Gal/game/scene/start.txt
             output/Repo2Gal/THIRD_PARTY_NOTICES.md
 

@@ -10,7 +10,7 @@
 **仓库概览（Overview）** 模式，生成给第一次接触项目的人看的“新手村向导”剧情。
 剧情素材全部来自仓库的真实源码、README、Issue、PR、Discussion、wiki 与 Release。
 
-当前版本：v0.6.2（版本历史见 [CHANGELOG.md](CHANGELOG.md)）。项目版本严格遵循
+当前版本：v0.7.0（版本历史见 [CHANGELOG.md](CHANGELOG.md)）。项目版本严格遵循
 [Semantic Versioning 2.0.0](https://semver.org/)，具体升级和同步规则见
 [CONTRIBUTING.md](CONTRIBUTING.md#版本管理)。
 
@@ -41,12 +41,16 @@ https://repo2gal.rhopaper.top/demo
 
 - [x] Chronicle 模式剧本生成（单场景线性叙事 + 少量分支）
 - [x] Overview 模式剧本生成（新手村向导：定位、特性、安装用法与目录地图，全程由角色亲口讲述）
-- [x] 显式 `--performance` 动态演出规划（Beat Manifest + Performance Plan v1）
+- [x] 三轮 LLM 协作生成：自由创作草稿 → 自然语言演出批注 → 导演 JSON 确定性编译
+- [x] 动态演出默认内建（立绘出入场/移动/摇晃/预设动画、背景转场、Pixi 特效），
+      profile 控制风格与预算
 - [x] 确定性角色表白名单（Chronicle：项目化身 / 核心贡献者 / 技术栈精灵；
       Overview：项目向导 / 技术栈精灵）
 - [x] 任意 OpenAI 兼容端点（`--base-url` / `--model` / 环境变量）
 - [x] `--dry-run` / `--script` / `--save-prompt` 省钱与离线路径
-- [ ] LLM 失败自动重试（需依赖调研记录）
+- [x] 导演 JSON 校验失败有界重试（默认 2 次）+ 草稿确定性兜底
+- [ ] RP 圆桌模式（`--rp`）：多角色独立上下文、以角色自身视角互动生成剧本，
+      依赖外部 KiMo 引擎（独立包 + 薄适配，KiMo 首个可用版本发布后接入）
 - [ ] 多场景 / 多章节剧情切分
 - [ ] Quick Start（贡献者上手）模式
 
@@ -55,7 +59,7 @@ https://repo2gal.rhopaper.top/demo
 - [x] WebGAL 语法白名单校验与静默降级（validator，不可绕过）
 - [x] 死跳转修复、Markdown 噪声剥离、缺 `end;` 自动补齐
 - [x] `--strict` 严格模式：存在降级即拒绝打包（退出码 5）
-- [x] `--strict-performance`：演出计划失败即拒绝打包（沿用退出码 5）
+- [x] Director Plan 独立 Schema/能力表/角色状态机/预算校验，错误结构化回喂重试
 
 ### 打包与产物
 
@@ -69,7 +73,7 @@ https://repo2gal.rhopaper.top/demo
 ### 素材系统
 
 - [x] Asset Pack v1 Schema 与安全校验（SemVer、SPDX、BCP 47、MIME、SHA-256）
-- [x] Performance Plan v1 动态演出（显式开启、确定性编译、可选审计 JSON）
+- [x] 演出由导演 JSON 确定性编译（无需额外开关，`--profile` 控制风格与预算）
 - [x] Local Provider（`assets init/validate`、单包 WebGAL Adapter）
 - [x] 内置 CC0 示例包（Chronicle/Overview 均可使用，与 WebGAL 默认素材并存）
 - [x] 角色 framing 元数据：全身原图非破坏性编译为 WebGAL 居中半身构图
@@ -80,7 +84,7 @@ https://repo2gal.rhopaper.top/demo
 
 - [x] 统一错误体系与退出码契约、错误信息脱敏
 - [x] 显式管线（pipeline）与可注入依赖，全流程可离线端到端测试
-- [x] 离线测试套件（188 项）
+- [x] 离线测试套件（204 项）
 - [x] 文档体系：用户指南、开发规约、Agent 指南、部署文档
 - [x] GitHub Actions 离线 CI 与 `main` 成功后自动生成/部署演示（需仓库 secrets）
 - [ ] python-github-backup 真实 fixture 回归样本
@@ -126,22 +130,21 @@ python3 -m http.server -d output/<repo>-overview 8000   # Overview 默认输出�
   --asset-pack builtin:cc0-chronicle --public-assets
 ```
 
-显式开启动态演出。默认 profile 是 `chronicle-subtle`，第二次 LLM 只生成结构化演出计划，
-Python 再编译为 WebGAL 4.6.2 命令：
+三轮生成默认开启：第一轮自由创作草稿，第二轮自然语言演出批注，第三轮输出导演 JSON。
+默认 profile 是 `chronicle-subtle`，Python 把导演 JSON 编译为 WebGAL 4.6.2 命令：
 
 ```bash
 .venv/bin/repo2gal owner/repo \
   --asset-pack builtin:cc0-chronicle --public-assets \
-  --performance
+  --profile chronicle-subtle
 ```
 
-调试时可选择性保存中间审计 JSON；这些参数必须与 `--performance` 一起使用：
+第三轮校验失败会自动打回重试（默认 2 次，可用 `--format-retries` 调整）；重试耗尽后
+使用草稿确定性兜底，产物仍可游玩。调试阶段产物可整体保存：
 
 ```bash
-.venv/bin/repo2gal owner/repo --performance \
-  --save-beat-manifest debug/beat-manifest.json \
-  --save-performance-plan debug/performance-plan.json \
-  --save-performance-report debug/performance-report.json
+.venv/bin/repo2gal owner/repo \
+  --save-stage-outputs debug/stages   # 草稿、批注、导演 JSON 各次尝试、反馈与校验报告
 ```
 
 不传 `--asset-pack` 时继续使用 WebGAL 发行版默认素材；传入素材包后，默认背景/BGM 仍会
@@ -198,24 +201,25 @@ repo2gal vuejs/core --dry-run --script my_story.txt # 只校验剧本并打印�
 ## 工作原理
 
 ```
-Asset Pack ──► Schema/授权/完整性校验 ───────────────────────┐
-python-github-backup ─┐                                     │
-                      ├─► RepoContext ──► LLM ──► validator ─┼─► WebGAL 产物
-GitHub REST metadata ─┘    筛选叙事素材      写剧本    收敛降级 │    静态站点
-逻辑素材 ID ──────────────────────────────────────────────────┘
+Asset Pack ──► Schema/授权/完整性校验 ───────────────────────────┐
+python-github-backup ─┐                                         │
+                      ├─► RepoContext ──► 三轮 LLM ──► 编译 ─────┼─► WebGAL 产物
+GitHub REST metadata ─┘    筛选叙事素材   创作/批注/导演JSON   确定性    静态站点
+逻辑素材 ID ──────────────────────────────────────────────────────┘
 ```
 
 | 模块 | 职责 |
 |---|---|
 | `fetcher.py` | 调用 `python-github-backup`（按剧本模式选择 flags）；官方 REST 补仓库概览；构建 RepoContext（Overview 含目录树与根级项目文件） |
-| `generator.py` | 确定性部分：按模式选角（角色表白名单）、上下文渲染、prompt 组装 |
+| `generator.py` | 确定性部分：按模式选角（角色表白名单）、上下文渲染、第一轮创作 prompt 组装 |
+| `director.py` | 草稿规范化、演出批注/导演 JSON prompt、Director Plan 校验与确定性 WebGAL 编译、重试反馈与草稿兜底 |
 | `llm.py` | LLM transport 薄客户端：错误包装与脱敏，与 prompt 组装分离 |
 | `validator.py` | 把脚本收敛到安全语法子集并给旁白补 `-clear`（不可绕过的硬边界） |
 | `packager.py` | WebGAL 发行版缓存、原子打包、最小 flowchart 生成 |
 | `asset_pack.py` | Asset Pack Schema、本地路径/授权/MIME/SHA/Profile 校验 |
 | `webgal_assets.py` | 逻辑 ID 映射、素材复制、脚本重写与第三方声明聚合 |
-| `performance.py` | Beat Manifest、演出计划校验、角色状态机与确定性 WebGAL 编译 |
-| `pipeline.py` | 流程编排唯一持有者：四模式矩阵与阶段产物传递 |
+| `performance.py` | 演出编译内核：能力表、profile、动作级 WebGAL 编译 |
+| `pipeline.py` | 流程编排唯一持有者：四模式矩阵、三轮生成与有界重试、阶段产物传递 |
 | `config.py` | 默认值、环境解析与路径常量单一来源 |
 | `errors.py` | 统一错误类型 → 退出码契约与集中脱敏 |
 | `cli.py` | 参数解析与结果渲染（不含流程逻辑） |
@@ -261,10 +265,10 @@ v0.4.0 已实现 Asset Pack v1 Schema、Local Provider、安全校验、WebGAL A
 `THIRD_PARTY_NOTICES.md`。剧本只引用 `background.archive` 等逻辑 ID，确定性 Adapter
 再映射到 WebGAL 裸文件名；LLM 不决定路径、许可证或复制行为。
 
-动态演出通过 `--performance` 显式开启。LLM 1 生成剧情，LLM 2 生成 Performance Plan JSON；
-`performance.py` 使用 beat_id、角色状态机、能力表和固定编译宏生成演出命令。无效演出计划
-默认保留剧情并生成一个最低确定性演出，避免 `--performance` 产出完全静态的作品；
-`--strict-performance` 时仍沿用退出码 5 拒绝产物。
+动态演出内建于三轮生成：第一轮自由创作草稿，第二轮自然语言批注演出，第三轮输出
+Director Plan JSON；`director.py` 用 beat 一对一锚点、角色状态机、能力表和固定编译宏
+生成演出命令，校验失败时把结构化错误回喂第三轮重试（默认 2 次），重试耗尽用草稿确定性
+兜底。`--profile` 控制演出风格与预算（`chronicle-subtle` / `chronicle-cinematic`）。
 
 角色素材可以保留完整全身透明图，并通过 Asset Pack 的归一化 `framing` 标注默认头顶、
 上半身底线和视觉中心。WebGAL Adapter 会生成确定性 `changeFigure -transform`，把角色放在
@@ -297,8 +301,8 @@ v0.4.0 已实现 Asset Pack v1 Schema、Local Provider、安全校验、WebGAL A
 - [docs/dev/asset-pack-spec.md](docs/dev/asset-pack-spec.md) — Asset Pack v1 规范与实现范围
 - [docs/dev/asset-pack-dependencies.md](docs/dev/asset-pack-dependencies.md) —
   Asset Pack 标准校验依赖调研与安全边界
-- [docs/dev/performance-plan-spec.md](docs/dev/performance-plan-spec.md) — Performance Plan v1
-  动态演出协议、状态机和编译边界
+- [docs/dev/director-plan-spec.md](docs/dev/director-plan-spec.md) — Director Plan v1
+  三轮生成协议、状态机、预算和 WebGAL 编译边界
 - [docs/dev/deployment.md](docs/dev/deployment.md) — 在线演示的部署与更新方式
 - [docs/dev/early/](docs/dev/early/) — 早期规划文档（v1–v9）及其勘误，仅历史参考
 

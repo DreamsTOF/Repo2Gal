@@ -28,17 +28,18 @@ CLI 冒烟（不联网、不花钱）：
 | `docs/dev/webgal-script-reference.md` | 对照 parser 源码核实的 WebGAL 语法，**改生成/校验前先读** |
 | `docs/dev/asset-pack-spec.md` | Asset Pack 规范与当前实现范围 |
 | `docs/dev/asset-pack-dependencies.md` | Asset Pack 标准校验依赖调研与安全边界 |
-| `docs/dev/performance-plan-spec.md` | Performance Plan v1、状态机、预算和 WebGAL 编译边界 |
+| `docs/dev/director-plan-spec.md` | Director Plan v1、三轮生成、状态机、预算和 WebGAL 编译边界 |
 | `AGENTS.md` | 面向 AI Agent 的仓库交接指南（边界与代码地图） |
 
 ## 不可破坏的边界（摘录自 AGENTS.md）
 
 1. **禁止重复造轮子**：GitHub 采集用 `python-github-backup`，不自行实现 API 客户端、
    分页、限流、重试；新增基础设施前先做依赖调研。
-2. **Validator 不可绕过**：任何剧本（LLM 或 `--script`）打包前必须经过 `validator.sanitize()`；
-   Performance Plan JSON 必须经过独立 Schema/状态机/能力校验。
-3. **确定性与生成式分离**：抓取、选角、资源路径、跳转校验、许可证判断、打包全部由
-   普通代码完成，LLM 只写剧情。
+2. **Validator 不可绕过**：任何剧本（编译产物或 `--script`）打包前必须经过 `validator.sanitize()`；
+   Director Plan JSON 必须经过独立 Schema/状态机/能力校验，失败只允许有界重试
+   （默认 2 次）与确定性草稿兜底。
+3. **确定性与生成式分离**：抓取、选角、资源路径、跳转校验、许可证判断、WebGAL 编译、
+   打包全部由普通代码完成；LLM 只负责草稿创作、演出批注与受限导演 JSON。
 4. **原始数据与上下文分离**：`python-github-backup` 产物是完整可审计的原始层；
    筛选/排序/截断只发生在 Context Builder，不为省 token 删备份。
 5. **不引入框架**：当前是直线流水线（`pipeline.py`），不需要 LangChain / DAG /
@@ -51,19 +52,20 @@ CLI 冒烟（不联网、不花钱）：
 ```
 repo2gal/
 ├── cli.py         参数解析与结果渲染（薄层，不含流程）
-├── pipeline.py    流程编排：四模式矩阵、RunOptions/RunArtifacts
+├── pipeline.py    流程编排：四模式矩阵、三轮生成 + 有界重试、RunOptions/RunArtifacts
 ├── fetcher.py     github-backup 适配 + 受控官方 REST 元数据 + RepoContext
-├── generator.py   确定性选角、上下文渲染、prompt 组装
+├── generator.py   确定性选角、上下文渲染、第一轮创作 prompt 组装
+├── director.py    草稿规范化、二/三轮 prompt、Director Plan 校验与确定性编译
 ├── llm.py         LLM transport 薄客户端（错误包装与脱敏）
 ├── validator.py   WebGAL 安全子集与静默错误降级（硬边界）
-├── webgal.py      经 parser 源码核实的命令常量与转义
+├── webgal.py      经 parser 源码核实的命令常量与转义（SAFE/COMPILE 白名单）
 ├── packager.py    模板缓存（SHA-256）、原子打包、最小 flowchart
 ├── asset_pack.py  Asset Pack Schema、本地安全/授权/完整性校验与 init
 ├── webgal_assets.py  逻辑 ID 映射、素材复制、脚本重写与 notices
-├── performance.py  Beat Manifest、Performance Plan 校验、状态机与确定性编译
+├── performance.py 演出编译内核：能力表、profile、动作级 WebGAL 编译
 ├── config.py      默认值、环境解析、路径常量
 ├── errors.py      错误类型 -> 退出码契约与集中脱敏
-└── prompts/       Chronicle 生成约束模板
+└── prompts/       chronicle/overview 草稿、annotations、director 模板
 ```
 
 ## 测试规约
@@ -73,8 +75,8 @@ repo2gal/
 - 涉及 WebGAL 语法改动必须对照 `docs/dev/webgal-script-reference.md` 与官方 parser 源码。
 - Asset Pack 测试需要系统 `libmagic`（Debian/Ubuntu 包名 `libmagic1`），不得改为按扩展名猜 MIME；
 - 素材测试使用微型 fixture 或 `builtin:cc0-chronicle`，不访问 Git/AI Provider 网络。
-- Performance 测试必须验证 Schema、beat_id 锚点、状态机、能力 registry 和 WebGAL golden 输出；
-- 动态演出只有显式 `--performance` 才运行，审计 JSON 只能通过对应 `--save-*` 参数写入。
+- Director 测试必须验证 Schema、beat 一对一锚点、状态机、能力 registry 和 WebGAL golden 输出；
+- 三轮生成默认 2 次重试，阶段产物只能通过 `--save-stage-outputs` 写入。
 
 ## 提交流程
 
@@ -99,8 +101,8 @@ MAJOR.MINOR.PATCH
 - `MINOR`：向后兼容的新功能、新 CLI 选项、新可选流程或公开能力扩展；
 - `MAJOR`：`1.0.0` 之后不向后兼容的 CLI、Python API、持久化格式或行为变更；
 - 在 `0.y.z` 阶段，任何公开不兼容变更至少提升 `MINOR`，并将 `PATCH` 归零；
-- 预发布版本使用 `0.6.2-alpha.1`、`0.6.2-beta.1`、`0.6.2-rc.1` 格式；
-- Python 元数据不带 `v`，Git tag、README 和 CHANGELOG 标题使用 `v0.6.2` 格式；
+- 预发布版本使用 `0.7.0-alpha.1`、`0.7.0-beta.1`、`0.7.0-rc.1` 格式；
+- Python 元数据不带 `v`，Git tag、README 和 CHANGELOG 标题使用 `v0.7.0` 格式；
 - Asset Pack 拥有独立 SemVer，不跟随 Repo2Gal 程序版本自动升级。
 
 发布版本时必须同步：

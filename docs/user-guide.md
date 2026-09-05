@@ -70,35 +70,36 @@ Release 与 wiki（不拉取 Issue/PR/Discussion），首次运行通常快很�
 
 全部命令行选项、模式矩阵与退出码见 [`README.md`](../README.md#快速开始)。
 
-### 动态演出
+### 三轮生成与动态演出
 
-动态演出默认关闭，需要显式指定 `--performance`：
+剧本由三轮 LLM 协作生成，演出不再需要单独开启：
+
+1. **创作**：第一轮只写故事草稿（自由格式，每个节拍一行 `[B]`），不接触任何 WebGAL 语法；
+2. **批注**：第二轮阅读草稿，用自然语言为节拍添加演出批注（出场、动画、转场、特效、音乐）；
+3. **导演 JSON**：第三轮把草稿与批注落成受限的 Director Plan JSON；普通代码把它确定性编译成 WebGAL。
 
 ```bash
 .venv/bin/repo2gal owner/repo \
-  --performance \
-  --performance-profile chronicle-subtle
+  --profile chronicle-subtle        # 演出风格与预算（默认）
+  --format-retries 2                # 导演 JSON 校验失败时打回第三轮的重试次数（默认 2）
 ```
 
-当前实现支持立绘进入/退出、语义槽位移动、摇晃、注册的预设动画、背景转场和场景生命周期
-Pixi 效果。第二次模型不会生成 WebGAL 命令、坐标、文件名或 runtime ID，所有这些内容由
-Python 确定性编译。
+第三轮校验失败时会把结构化错误清单反馈给模型重试；重试耗尽后使用第一轮草稿的确定性
+兜底编译，产物仍可游玩。当前实现支持立绘进入/退出、语义槽位移动、摇晃、注册的预设动画、
+背景转场和场景生命周期 Pixi 效果。模型不生成 WebGAL 命令、坐标、文件名或 runtime ID，
+这些全部由 Python 确定性编译。
 
 内置角色素材虽然保留全身原图，但 manifest 带有归一化 `framing` 标注。最终 WebGAL 产物会
 默认居中放大为半身构图，腿部藏在画面下方；移动和动画不会重置成全身视图。
 
-调试审计文件按需选择保存：
+调试阶段产物按需保存：
 
 ```bash
-.venv/bin/repo2gal owner/repo --performance \
-  --save-beat-manifest debug/beat-manifest.json \
-  --save-performance-plan debug/performance-plan.json \
-  --save-performance-report debug/performance-report.json
+.venv/bin/repo2gal owner/repo \
+  --save-stage-outputs debug/stages   # 草稿、批注、导演 JSON 各次尝试、反馈与校验报告
 ```
 
-演出计划失败或返回空 cues 时，普通模式保留剧情并加入一个最低确定性演出，确保显式启用
-`--performance` 后不会得到完全静态的作品；增加 `--strict-performance` 后仍使用退出码 5
-拒绝产物。`--strict` 和 `--strict-performance` 分别控制剧情校验和演出校验。
+`--strict` 控制最终 WebGAL validator 出现降级时是否以退出码 5 拒绝产物。
 
 ### 使用本地素材包
 

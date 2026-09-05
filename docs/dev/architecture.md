@@ -2,12 +2,15 @@
 
 > 本文描述**当前实现和已锁定的边界**。历史设想放在 `docs/dev/early/`，不得把早期规划当成现状。
 
-当前基线：`v0.6.2`。Chronicle 主流程已于 2026-07-31 在真实 GitHub 仓库和真实 LLM
+当前基线：`v0.7.0`。Chronicle 主流程已于 2026-07-31 在真实 GitHub 仓库和真实 LLM
 环境中端到端实测通过。v0.4.0 落地 Asset Pack v1；v0.5.0 增加显式 Performance Plan
-动态演出、状态机校验和确定性 WebGAL 编译；v0.6.0 新增仓库概览（Overview）模式；v0.6.1 修复旁白继承上一句 speaker 的问题；v0.6.2 明确 Overview 不使用旁白、向导台词全部由角色亲口说出。
+动态演出；v0.6.0 新增仓库概览（Overview）模式；v0.6.1 修复旁白继承上一句 speaker 的问题；
+v0.6.2 明确 Overview 不使用旁白；v0.7.0 把剧本生成重构为三轮 LLM（自由创作草稿 →
+自然语言演出批注 → Director Plan JSON）+ 确定性编译 + 有界重试，合并原 Performance
+通道并删除插入式合并。
 
-版本号采用 SemVer 2.0.0；当前从 v0.5.0 升至 v0.6.0 是因为新增向后兼容的 Overview
-模式、`--mode` CLI 选项与概览上下文能力；v0.6.0 之后均为兼容缺陷修复。
+版本号采用 SemVer 2.0.0；v0.7.0 删除 `--performance` 系列 CLI 参数并以三轮生成取代，
+属于公开不兼容变更，因此提升 MINOR。
 完整升级与多文件同步规则见 `CONTRIBUTING.md`「版本管理」。
 
 ## 1. 产品定位
@@ -58,22 +61,23 @@ RepoContext
 generator.build_cast()               确定性按模式选角（角色表白名单）
        │
        ▼
-generator.build_prompt()             确定性按模式组装 prompt（只暴露逻辑素材 ID）
+generator.build_prompt()             确定性组装第一轮创作 prompt（只暴露逻辑素材 ID）
        │
        ▼
-OpenAI-compatible LLM 1              非确定性：写剧情（llm.LLMClient）
-        │
-        ▼
+OpenAI-compatible LLM                director 三轮（llm.LLMClient 薄传输）：
+       │                             1) 自由创作草稿（[B] 锚点，无语法负担）
+       ├── director.canonicalize_draft()
+       │                             2) 自然语言演出批注（按 beat 锚定，禁止命令）
+       │                             3) Director Plan v1 JSON（受限语义）
+       ▼                             └─ 校验失败 -> 结构化反馈 -> 有界重试（默认 2）
+director.validate_director()         Schema / 能力表 / 角色状态机 / 预算
+       │
+       ▼
+director.compile_director()          确定性生成 WebGAL（label=beat id、转场并入 changeBg）
+       │                             重试耗尽 -> compile_draft_fallback() 草稿兜底
+       ▼
 validator.sanitize()                 命令/角色/逻辑素材 ID 校验与死跳转修复（硬边界）
-        │
-        ▼
-performance.extract_beats()          确定性 Beat Manifest
-        │
-        ├── `--performance` ──► LLM 2：Performance Plan JSON
-        │                              │
-        │                              ▼
-        │                     performance validator/compiler
-        │
+        │                            编译产物用 COMPILE_COMMANDS，--script 用 SAFE_COMMANDS
         ▼
 packager.package()                   WebGAL 模板 + 素材/演出适配 + notices，staging 内完成
        │
@@ -81,8 +85,9 @@ packager.package()                   WebGAL 模板 + 素材/演出适配 + notic
 output/<repo>/ 或 output/<repo>-<mode>/  可由任意静态服务器托管
 ```
 
-整条直线由 `pipeline.py` 编排（`--dry-run` × `--script` 四模式矩阵，再叠加
-`--mode` 剧本模式），`cli.py` 只负责参数映射与结果渲染。阶段依赖（fetch/LLM/package）
+整条流程由 `pipeline.py` 编排（`--dry-run` × `--script` 四模式矩阵，再叠加
+`--mode` 剧本模式）：主线是直线，唯一环路是第三轮导演 JSON 的有界重试，不存在
+agent 工具调用循环。`cli.py` 只负责参数映射与结果渲染。阶段依赖（fetch/LLM/package）
 可注入，流水线可离线端到端测试。
 
 ## 3. 外部依赖边界
@@ -160,8 +165,10 @@ Repo2Gal **不负责**：
 
 - 协议：OpenAI-compatible Chat Completions
 - 默认配置：环境变量 `REPO2GAL_BASE_URL`、`REPO2GAL_MODEL`、`REPO2GAL_API_KEY`
-- LLM 负责剧情创作和受限的 Performance Plan 意图，不负责 GitHub 抓取、角色白名单、
-  WebGAL 原始命令、坐标、时序、流程校验和资源打包
+- LLM 只负责三轮生成式任务：剧情草稿创作、自然语言演出批注、受限 Director Plan JSON。
+  不负责 GitHub 抓取、角色白名单、WebGAL 命令、坐标、时序、流程校验和资源打包；
+  第三轮失败只允许有界重试（默认 2 次），不允许无界循环
+- 三轮温度：创作 0.8、批注 0.3、导演 JSON 0.2
 
 ### 3.5 Asset Pack 标准校验依赖
 
@@ -177,16 +184,17 @@ SPDX expression 使用 `packaging.licenses`，BCP 47 使用 `langcodes`，CSS Co
 | 文件 | 职责 | 不应承担 |
 |---|---|---|
 | `fetcher.py` | 按模式调上游备份工具；受控官方 REST 补充；构建 `RepoContext`；Overview 目录树/项目文件提取 | HTML 爬虫、通用 API 客户端 |
-| `generator.py` | 确定性按模式选角、上下文渲染、prompt 组装 | GitHub 抓取、WebGAL 打包、网络调用 |
+| `generator.py` | 确定性按模式选角、上下文渲染、第一轮创作 prompt 组装 | GitHub 抓取、WebGAL 打包、网络调用 |
+| `director.py` | 草稿规范化、批注/导演 prompt、Director Plan Schema/语义校验、确定性 WebGAL 编译、重试反馈与草稿兜底 | 网络调用、WebGAL 打包 |
 | `llm.py` | LLM transport 薄客户端：请求、错误包装、脱敏 | prompt 策略、重试框架 |
 | `validator.py` | WebGAL 安全子集、流程完整性、静默错误降级、旁白 `-clear` 归一化 | 改写剧情内容 |
-| `webgal.py` | 经源码核实的命令常量与转义 | 猜测引擎语法 |
+| `webgal.py` | 经源码核实的命令常量（SAFE/COMPILE 白名单）与转义 | 猜测引擎语法 |
 | `packager.py` | 获取发行版、原子替换、最小 flowchart、输出静态站点 | 修改 WebGAL 引擎 |
 | `asset_pack.py` | Schema、本地路径/授权/MIME/SHA/Profile 校验与本地包初始化 | 下载素材、执行包内脚本 |
 | `webgal_assets.py` | 逻辑 ID 映射、素材复制、脚本重写、第三方声明聚合 | 转码、多包覆盖、许可证猜测 |
-| `performance.py` | Beat Manifest、Performance Plan Schema/语义校验、状态机和 WebGAL 编译 | 直接信任 LLM 命令、任意引擎参数 |
-| `pipeline.py` | 流程编排唯一持有者：执行矩阵、剧本模式、阶段产物传递 | 参数解析、终端渲染 |
-| `config.py` | 默认值（含剧本模式）、环境解析、路径常量、密钥脱敏显示 | 业务逻辑 |
+| `performance.py` | 演出编译内核：能力表、profile、动作级 WebGAL 编译与共享状态工具 | 直接信任 LLM 命令、任意引擎参数 |
+| `pipeline.py` | 流程编排唯一持有者：执行矩阵、三轮生成与有界重试、阶段产物传递 | 参数解析、终端渲染 |
+| `config.py` | 默认值（含剧本模式与重试次数）、环境解析、路径常量、密钥脱敏显示 | 业务逻辑 |
 | `errors.py` | 统一错误类型与退出码契约、错误正文脱敏 | 业务逻辑 |
 | `cli.py` | 参数解析、结果渲染、退出码映射 | 流程逻辑实现 |
 
@@ -261,6 +269,15 @@ return SCRIPT_CONFIG_MAP.get(command)?.scriptType ?? commandType.say;
 无冒号的纯文本行则会被 parser 把整行当作 speaker。因此 validator 把 `say:`、
 `:文本`、无冒号文本与未知命令降级统一编译为 `say:文本 -clear;`。
 
+v0.7.0 起 LLM 不再直接输出 WebGAL 文本，validator 的输入分两类：
+
+- 确定性编译产物（`director.compile_director`）：使用 `COMPILE_COMMANDS` 白名单
+  （`SAFE_COMMANDS` + `pixiInit`/`pixiPerform`/`setTransform`/`setTempAnimation`）；
+- `--script` 用户脚本：仍收敛在 `SAFE_COMMANDS`。
+
+两类输入都必须过 sanitize；编译产物理论上永远通过（否则是编译器 bug，属于错误
+而非第三轮重试目标）。
+
 ## 8. 素材系统（Local Provider 已实现）
 
 素材来源插件化，但格式统一：
@@ -282,9 +299,9 @@ v0.4.0 只实现 Local Provider，Git/AI Provider 仍是计划；核心没有 Pr
 
 角色可用归一化 `framing` 标注 `top`、`bottom` 和 `centerX`。WebGAL Adapter 根据
 2560×1440 设计舞台计算 `changeFigure -transform`，保留全身原图但默认呈现居中半身构图；
-Performance 编译器在移动、摇晃和缩放时继续保留该 framing。
+演出编译器在移动、摇晃和缩放时继续保留该 framing。
 未声明 framing 的角色也会使用默认 contain transform 和中心基准，避免 WebGAL 原生
-`left/right` 基准与 Performance 语义槽位产生双重偏移。剧情重复换图、退场和前向分支汇合
+`left/right` 基准与演出语义槽位产生双重偏移。剧情重复换图、退场和前向分支汇合
 会进入状态版本/合并分析；汇合状态不一致的角色不允许继续生成目标动画。
 
 校验顺序为：1 MiB 有界读取/重复键 → Draft 2020-12 Schema 与标准格式 → 普通文件和路径
@@ -349,19 +366,27 @@ evidence 保存在 `third_party/asset-packs/`。
   修复 WebGAL 4.6.2 旁白继承上一句 speaker 的静默错渲染
 - v0.6.2：Overview prompt 明确该模式不使用旁白，向导自我介绍、过渡与收尾
   全部写成项目化身的台词，避免 LLM 把角色台词生成成 `say:`
+- v0.7.0：剧本生成重构为三轮 LLM（自由创作草稿 → 自然语言演出批注 → Director Plan
+  JSON）+ 确定性编译；合并原 `--performance` 通道（演出默认内建，`--profile` 控制
+  风格与预算）；第三轮校验失败结构化回喂、有界重试（`--format-retries`，默认 2），
+  重试耗尽走草稿确定性兜底；删除 `--performance`/`--performance-profile`/
+  `--strict-performance`/`--save-*` 旧参数，新增 `--save-stage-outputs`
 
-`v0.6.2` 结论：Chronicle、Overview、单本地素材包闭环和显式动态演出均已实现；
+`v0.7.0` 结论：Chronicle、Overview、单本地素材包闭环和动态演出均已实现；
 Quick Start 模式、Git/AI Provider 仍是计划，不得写成现有能力。
 
-动态演出已实现为显式 opt-in 功能，两种剧本模式均可使用：`--performance` 使用默认
-`chronicle-subtle` profile，第二次 LLM 输出 Performance Plan v1 JSON，Python 生成
-Beat Manifest、执行状态/预算校验、编译有限 WebGAL 4.6.2 演出宏并按 beat_id 合并。
-审计 JSON 只有用户指定保存参数时才写入。
+三轮生成默认开启，两种剧本模式通用。第一轮只写故事（`[B]` 锚点），第二轮按 beat
+写自然语言演出批注，第三轮输出与草稿一一对应的 Director Plan JSON；`director.py`
+执行 Schema/能力表/角色状态机/预算校验并确定性编译 WebGAL（label = beat id，
+`screen.transition` 并入同 beat 的 changeBg）。校验失败的错误清单回喂第三轮重试；
+重试耗尽后由 `compile_draft_fallback()` 只凭草稿拼出可玩脚本。协议与编译边界见
+`docs/dev/director-plan-spec.md`。
 
 推荐下一步：
 
 1. 给备份解析器增加真实 `python-github-backup` fixture 回归样本。
-2. 用真实 LLM 和 CC0 示例包评估两种模式的 prompt，建立固定仓库 golden cases。
+2. 用真实 LLM 和 CC0 示例包端到端验证三轮流程（创作/批注/导演 JSON 的质量与重试率），
+   建立固定仓库 golden cases。
 3. 再考虑 Quick Start 模式、多场景拆分和 Git Asset Provider；实现 Git Provider 前必须
    重新调研成熟 Git/归档依赖。
 4. AI Provider 继续后置，先明确服务条款快照、Prompt/seed 与 `LicenseRef-AI-*` 策略。

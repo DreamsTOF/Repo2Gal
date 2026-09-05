@@ -4,6 +4,25 @@
 [Semantic Versioning 2.0.0](https://semver.org/)；`0.y.z` 阶段的新功能提升 `MINOR`，
 兼容缺陷修复提升 `PATCH`，公开不兼容变更至少提升 `MINOR`。
 
+## v0.7.0 — 2026-08-31
+
+**剧本生成重构为三轮 LLM + 确定性编译（Director 流程）**：
+
+- 第一轮只写故事草稿（自由格式，每个节拍一行 `[B]` 锚点），不再要求模型一边创作
+  一边记忆 WebGAL 语法；第二轮用自然语言按 beat 写演出批注；第三轮把草稿与批注落成
+  受限 Director Plan JSON（与草稿 beat 一一对应），由普通代码确定性编译为 WebGAL；
+- 合并原 `--performance` 通道：动态演出默认内建，`--profile` 控制风格与预算
+  （`chronicle-subtle` / `chronicle-cinematic`），删除插入式合并与
+  `--performance`/`--performance-profile`/`--strict-performance`/
+  `--save-beat-manifest`/`--save-performance-plan`/`--save-performance-report` 参数；
+- 第三轮校验失败时把结构化错误清单回喂模型重试（`--format-retries`，默认 2 次）；
+  重试耗尽后由第一轮草稿确定性兜底编译，产物保证可玩；
+- 新增 `--save-stage-outputs`：保存草稿、批注、导演 JSON 各次尝试、重试反馈与校验报告；
+- 编译产物经 validator 时使用 `COMPILE_COMMANDS` 白名单，`--script` 用户脚本仍收敛在
+  `SAFE_COMMANDS`；validator 对两类输入都是硬边界；
+- 协议与编译边界见 `docs/dev/director-plan-spec.md`（取代 performance-plan-spec）；
+- 离线测试扩充到 204 项。
+
 ## v0.6.2 — 2026-08-28
 
 **修复 Overview 向导台词被生成成旁白**：

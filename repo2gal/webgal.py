@@ -48,6 +48,7 @@ KNOWN_COMMANDS: frozenset[str] = frozenset(
 
 # 允许 LLM 直接产出的最小子集。任何超出此集合的命令都会被 validator 降级，
 # 因为 WebGAL 对未知命令不报错、而是把命令名当成角色名静默错渲染。
+# v0.7.0 起 LLM 不再输出 WebGAL 文本，此集合约束 --script 用户脚本。
 SAFE_COMMANDS: frozenset[str] = frozenset(
     {
         "say",
@@ -59,6 +60,18 @@ SAFE_COMMANDS: frozenset[str] = frozenset(
         "jumpLabel",
         "choose",
         "end",
+    }
+)
+
+# 确定性编译内核（director.compile_director / performance._compile_action）
+# 会产出的额外命令。编译产物由普通代码生成，可以用比 SAFE_COMMANDS 更宽的
+# 白名单过 validator（validator 仍是硬边界：结构、跳转、素材引用照查）。
+COMPILE_COMMANDS: frozenset[str] = SAFE_COMMANDS | frozenset(
+    {
+        "pixiInit",
+        "pixiPerform",
+        "setTransform",
+        "setTempAnimation",
     }
 )
 

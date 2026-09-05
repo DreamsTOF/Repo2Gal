@@ -93,7 +93,7 @@ def test_cli_maps_options_into_run_options(monkeypatch, tmp_path):
     assert "✓ 完成" in result.output
 
 
-def test_cli_maps_performance_options_into_run_options(monkeypatch, tmp_path):
+def test_cli_maps_director_options_into_run_options(monkeypatch, tmp_path):
     captured = {}
 
     def fake(options, **kwargs):
@@ -105,26 +105,31 @@ def test_cli_maps_performance_options_into_run_options(monkeypatch, tmp_path):
         cli.main,
         [
             "acme/widget",
-            "--performance",
-            "--performance-profile",
+            "--profile",
             "chronicle-cinematic",
-            "--strict-performance",
-            "--save-beat-manifest",
-            str(tmp_path / "beats.json"),
-            "--save-performance-plan",
-            str(tmp_path / "plan.json"),
-            "--save-performance-report",
-            str(tmp_path / "report.json"),
+            "--format-retries",
+            "5",
+            "--save-stage-outputs",
+            str(tmp_path / "stages"),
         ],
     )
     assert result.exit_code == 0, result.output
     options = captured["options"]
-    assert options.performance is True
-    assert options.performance_profile == "chronicle-cinematic"
-    assert options.strict_performance is True
-    assert options.save_beat_manifest == tmp_path / "beats.json"
-    assert options.save_performance_plan == tmp_path / "plan.json"
-    assert options.save_performance_report == tmp_path / "report.json"
+    assert options.profile == "chronicle-cinematic"
+    assert options.format_retries == 5
+    assert options.save_stage_outputs == tmp_path / "stages"
+
+
+def test_cli_rejects_negative_format_retries(monkeypatch):
+    monkeypatch.setattr(cli, "run_pipeline", lambda options, **kw: _artifacts())
+    result = CliRunner().invoke(cli.main, ["acme/widget", "--format-retries", "-1"])
+    assert result.exit_code == 2
+
+
+def test_cli_rejects_unknown_profile(monkeypatch):
+    monkeypatch.setattr(cli, "run_pipeline", lambda options, **kw: _artifacts())
+    result = CliRunner().invoke(cli.main, ["acme/widget", "--profile", "nope"])
+    assert result.exit_code == 2
 
 
 def test_cli_maps_overview_mode_and_defaults_to_chronicle(monkeypatch, tmp_path):
