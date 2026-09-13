@@ -57,14 +57,14 @@ def _die(msg: str, code: int) -> None:
     type=click.Choice(sorted(GAME_MODES)),
     default=DEFAULT_GAME_MODE,
     show_default=True,
-    help="剧本模式：chronicle 编年史 / overview 仓库概览",
+    help="剧本模式：chronicle 编年史 / overview 仓库概览 / quickstart 贡献者上手",
 )
 @click.option(
     "--output",
     "-o",
     default=None,
     type=click.Path(),
-    help="产物目录；默认 ./output/<repo>，overview 为 ./output/<repo>-overview",
+    help="产物目录；默认 ./output/<repo>，非 chronicle 模式为 ./output/<repo>-<mode>",
 )
 @click.option("--model", default=None, help="模型名，默认取 REPO2GAL_MODEL 或 deepseek-v4-pro")
 @click.option("--base-url", default=None, help="OpenAI 兼容端点，默认取 REPO2GAL_BASE_URL")
@@ -72,7 +72,7 @@ def _die(msg: str, code: int) -> None:
     "--threads",
     default=12,
     show_default=True,
-    help="Chronicle 模式选入上下文的热门讨论数（overview 忽略）",
+    help="chronicle 选入上下文的热门讨论数 / quickstart 的起步任务数（overview 忽略）",
 )
 @click.option(
     "--backup-dir",
@@ -143,6 +143,7 @@ def generate(
     示例：
       repo2gal vuejs/core
       repo2gal vuejs/core --mode overview
+      repo2gal vuejs/core --mode quickstart
       repo2gal https://github.com/OpenWebGAL/WebGAL --dry-run
       repo2gal vuejs/core --reuse-backup --script my_story.txt
     """

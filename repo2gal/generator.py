@@ -30,6 +30,7 @@ PROMPT_DIR = Path(__file__).parent / "prompts"
 _MODE_TEMPLATES = {
     "chronicle": "chronicle.md",
     "overview": "overview.md",
+    "quickstart": "quickstart.md",
 }
 
 
@@ -62,6 +63,8 @@ def build_cast(ctx: RepoContext, *, mode: str = DEFAULT_GAME_MODE) -> Cast:
     Chronicle 使用三类角色：旁白者（项目本体拟人）、核心贡献者、技术栈精灵。
     Overview 是新手引导，只保留项目向导与技术栈精灵，避免把历史讨论角色
     带入“快速了解项目”的剧本。
+    Quick Start 是贡献者上手，保留项目化身（带新人的维护者）、最多两位
+    维护者与技术栈精灵：改动的评审者会真实出场，历史争论角色不出现。
     """
     if mode not in GAME_MODES:
         raise UsageError(f"未知剧本模式：{mode}")
@@ -79,6 +82,12 @@ def build_cast(ctx: RepoContext, *, mode: str = DEFAULT_GAME_MODE) -> Cast:
             project,
             f"{ctx.full_name} 的项目化身，这次担任新手村向导。{ctx.description or '只讲资料能证明的内容'}",
         )
+    elif mode == "quickstart":
+        add(
+            project,
+            f"{ctx.full_name} 的项目化身，负责带第一次参与项目的人走完上手流程。"
+            f"{ctx.description or '只讲资料能证明的做法'}",
+        )
     else:
         add(
             project,
@@ -91,15 +100,23 @@ def build_cast(ctx: RepoContext, *, mode: str = DEFAULT_GAME_MODE) -> Cast:
                 _sanitize_name(c.login),
                 f"社区参与者，在筛选后的叙事素材中出现 {c.contributions} 次",
             )
+    elif mode == "quickstart":
+        for c in ctx.contributors[:2]:
+            add(
+                _sanitize_name(c.login),
+                f"维护者之一，评审外部贡献者的改动，在起步任务中出现 {c.contributions} 次",
+            )
 
     lang = _sanitize_name(ctx.language)
     if lang and lang.lower() != "未知":
-        description = (
-            f"{ctx.language} 语言的拟人化身，负责解释技术栈和配置层面的问题"
-            if mode == "overview"
-            else f"{ctx.language} 语言的拟人化身，代表这个项目的技术底色"
+        descriptions = {
+            "overview": f"{ctx.language} 语言的拟人化身，负责解释技术栈和配置层面的问题",
+            "quickstart": f"{ctx.language} 语言的拟人化身，负责解释开发环境、依赖与构建问题",
+        }
+        add(
+            lang,
+            descriptions.get(mode, f"{ctx.language} 语言的拟人化身，代表这个项目的技术底色"),
         )
-        add(lang, description)
 
     return Cast(entries=entries)
 
@@ -202,6 +219,69 @@ def render_overview_context(ctx: RepoContext, *, max_chars: int = 12000) -> str:
     return _truncate("\n".join(parts), max_chars)
 
 
+def render_quickstart_context(ctx: RepoContext, *, max_chars: int = 16000) -> str:
+    """把 RepoContext 渲染成 Quick Start 模式专用的 LLM 上下文。
+
+    Quick Start 的素材优先级：贡献者入口文件（CONTRIBUTING、构建脚本与 CI 定义）
+    > README > 目录结构 > 起步任务 > wiki。社区历史讨论是编年史素材，不进入
+    贡献者上手剧本。
+    """
+    parts: list[str] = [
+        f"## 仓库：{ctx.full_name}",
+        f"- 一句话简介：{ctx.description or '（资料未提供，请从 README 提炼）'}",
+        f"- 主语言：{ctx.language}　创建于：{ctx.created_at or '未知'}",
+    ]
+    if ctx.stars:
+        parts.append(f"- Star：{ctx.stars}")
+    if ctx.topics:
+        parts.append(f"- 主题标签：{', '.join(ctx.topics[:10])}")
+    if ctx.contributors:
+        who = "，".join(f"{c.login}（{c.contributions}）" for c in ctx.contributors[:6])
+        parts.append(f"- 起步任务里出现的维护者与参与者：{who}")
+
+    if ctx.contributor_files:
+        parts.append(
+            "## 贡献者入口文件摘录（贡献指南、构建脚本与 CI 定义，提交规矩的权威来源）\n"
+            f"{ctx.contributor_files}"
+        )
+
+    if ctx.readme_excerpt:
+        parts.append(f"\n## README 摘录（安装、开发与运行说明）\n{ctx.readme_excerpt}")
+
+    if ctx.file_tree:
+        parts.append(f"\n## 目录结构（已过滤依赖目录与构建产物，最深 4 层）\n{ctx.file_tree}")
+
+    if ctx.starter_issues:
+        parts.append("\n## 起步任务（开放且带新人标签的真实 Issue，只能引用这里的编号）")
+        for issue in ctx.starter_issues:
+            labels = "、".join(issue.labels) or "（无标签）"
+            parts.append(
+                f"\n### #{issue.number} {issue.title}"
+                f"\n标签：{labels}　发起人：{issue.author}　时间：{issue.created_at}"
+                f"　评论数：{issue.comment_count}"
+            )
+            if issue.body:
+                parts.append(f"正文：{issue.body}")
+    else:
+        parts.append(
+            "\n## 起步任务\n（备份里没有带新人标签的开放 Issue：请改为讲解如何自己筛选可上手的任务，"
+            "不要编造编号）"
+        )
+
+    if ctx.wiki_excerpt:
+        parts.append(f"\n## Wiki 摘录\n{ctx.wiki_excerpt}")
+
+    return _truncate("\n".join(parts), max_chars)
+
+
+#: 各模式的第一轮上下文渲染器：模式与素材取舍一一对应，禁止在调用处散落 if/else。
+_CONTEXT_RENDERERS = {
+    "chronicle": render_context,
+    "overview": render_overview_context,
+    "quickstart": render_quickstart_context,
+}
+
+
 def build_prompt(
     ctx: RepoContext,
     cast: Cast,
@@ -216,7 +296,7 @@ def build_prompt(
     template = (PROMPT_DIR / _MODE_TEMPLATES[mode]).read_text(encoding="utf-8")
     background_names = DEFAULT_BACKGROUNDS if backgrounds is None else backgrounds
     bgm_names = DEFAULT_BGM if bgm is None else bgm
-    context = render_context(ctx) if mode == "chronicle" else render_overview_context(ctx)
+    context = _CONTEXT_RENDERERS[mode](ctx)
     return (
         template.replace("{characters}", cast.render())
         .replace("{backgrounds}", "、".join(background_names) or "（无）")

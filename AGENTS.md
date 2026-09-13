@@ -6,19 +6,23 @@
 
 Repo2Gal 把 GitHub 仓库转换为基于 WebGAL 的“可游玩开源项目文档”。
 
-当前实现两种剧本模式：Chronicle（编年，默认）使用真实源码、README、Issue、PR、
+当前实现三种剧本模式：Chronicle（编年，默认）使用真实源码、README、Issue、PR、
 Discussion、wiki 和 Release 生成项目历史视觉小说；Overview（仓库概览）使用源码、
-README、目录树、根级项目文件、Release 与 wiki 生成面向新手的“项目导览”视觉小说。
-Quick Start（贡献者上手）仍在计划中。不要擅自把 MVP 扩成通用 Galgame、RPG 或可视化 IDE。
+README、目录树、根级项目文件、Release 与 wiki 生成面向新手的“项目导览”视觉小说；
+Quick Start（贡献者上手）使用源码、README、目录树、贡献者入口文件（CONTRIBUTING、
+构建/测试入口、CI 工作流）与新人友好 Issue 生成“从跑起来到第一个改动”的上手视觉小说。
+不要擅自把 MVP 扩成通用 Galgame、RPG 或可视化 IDE。
 
-当前稳定基线为 `v0.7.0`：v0.1.0 主流程已于 2026-07-31 通过真实仓库、真实 LLM
+当前稳定基线为 `v0.8.0`：v0.1.0 主流程已于 2026-07-31 通过真实仓库、真实 LLM
 和 WebGAL 产物的端到端实测；v0.3.0 重构流程架构（显式管线 + 统一错误域 + 薄 CLI）；
 v0.4.0 实现 Asset Pack v1 本地单包闭环与内置 CC0 Chronicle 示例包；v0.5.0 实现显式
 Performance Plan v1 动态演出闭环；v0.6.0 实现仓库概览（Overview）模式；v0.6.1 修复
 WebGAL 4.6.2 旁白继承上一句 speaker 的问题（validator 统一补 `-clear`）；v0.6.2 明确
 Overview 模式不使用旁白，向导台词全部由角色亲口说出；v0.7.0 把剧本生成重构为三轮 LLM
 （自由创作草稿 → 自然语言演出批注 → Director Plan JSON）+ 确定性编译 + 有界重试，
-合并原 `--performance` 通道并删除插入式合并。
+合并原 `--performance` 通道并删除插入式合并；v0.8.0 新增 Quick Start（贡献者上手）模式，
+按模式选择 Issue 采集范围并确定性提取起步任务，并与 Overview 统一为“带路角色全程说话、
+不使用旁白”的剧本形态（config 的 `NARRATION_FREE_MODES` 是唯一来源）。
 
 项目版本严格遵循 SemVer 2.0.0。`0.y.z` 阶段兼容修复提升 PATCH，向后兼容新功能或公开
 不兼容变更提升 MINOR；`1.0.0` 后不兼容变更提升 MAJOR。发版必须同步 `pyproject.toml`、
@@ -89,8 +93,9 @@ GitHub GraphQL；禁止借此恢复通用 API 客户端、分页器、限流器�
 `GET /repos/{owner}/{repo}` 补齐。新增 REST endpoint 必须有明确字段需求、文档记录和离线测试。
 
 不要默认传上游 `--all`。它会包含 hooks 和 Release assets，可能要求额外权限并下载大量二进制。
-当前显式 flags 定义在 `fetcher.NARRATIVE_BACKUP_FLAGS`（Chronicle）与
-`fetcher.OVERVIEW_BACKUP_FLAGS`（Overview：源码/Release/wiki）。
+当前显式 flags 定义在 `fetcher.NARRATIVE_BACKUP_FLAGS`（Chronicle：全量叙事数据）、
+`fetcher.OVERVIEW_BACKUP_FLAGS`（Overview：源码/Release/wiki）与
+`fetcher.QUICKSTART_BACKUP_FLAGS`（Quick Start：源码/Issue 与评论/wiki，用于提取起步任务）。
 
 ### WebGAL
 
@@ -173,7 +178,7 @@ WebGAL Adapter 负责把全身原图编译为居中半身 transform，演出动�
 
 | 路径 | 职责 |
 |---|---|
-| `repo2gal/fetcher.py` | github-backup 适配（按模式选择 flags）；受控官方 REST 元数据；备份 JSON/Git -> RepoContext；Overview 目录树与项目文件提取 |
+| `repo2gal/fetcher.py` | github-backup 适配（按模式选择 flags）；受控官方 REST 元数据；备份 JSON/Git -> RepoContext；Overview 目录树与项目文件提取；Quick Start 贡献者入口文件与起步任务提取 |
 | `repo2gal/generator.py` | 确定性部分：按模式选角（角色表白名单）、上下文渲染、第一轮创作 prompt 组装 |
 | `repo2gal/director.py` | 草稿规范化、批注/导演 JSON prompt、Director Plan 校验、确定性 WebGAL 编译、重试反馈与草稿兜底 |
 | `repo2gal/llm.py` | LLM transport 薄客户端：错误包装与脱敏，与 prompt 组装分离 |
@@ -183,12 +188,13 @@ WebGAL Adapter 负责把全身原图编译为居中半身 transform，演出动�
 | `repo2gal/asset_pack.py` | Asset Pack Schema、本地安全/授权/MIME/SHA/Profile 校验与 init |
 | `repo2gal/webgal_assets.py` | 逻辑 ID 映射、素材复制、脚本重写与第三方声明聚合 |
 | `repo2gal/performance.py` | 演出编译内核：能力表、profile、动作级 WebGAL 编译与共享状态工具 |
-| `repo2gal/pipeline.py` | 流程编排唯一持有者：四模式矩阵、三轮生成与有界重试、阶段产物传递 |
+| `repo2gal/pipeline.py` | 流程编排唯一持有者：三模式矩阵、三轮生成与有界重试、阶段产物传递 |
 | `repo2gal/config.py` | 默认值（含剧本模式与重试次数）、环境解析与路径常量单一来源 |
 | `repo2gal/errors.py` | 统一错误类型 -> 退出码契约与集中脱敏 |
 | `repo2gal/cli.py` | CLI 参数解析与结果渲染（不含流程逻辑） |
 | `repo2gal/prompts/chronicle.md` | Chronicle 第一轮自由创作草稿约束 |
 | `repo2gal/prompts/overview.md` | Overview 第一轮自由创作草稿约束 |
+| `repo2gal/prompts/quickstart.md` | Quick Start 第一轮自由创作草稿约束 |
 | `repo2gal/prompts/annotations.md` | 第二轮自然语言演出批注约束 |
 | `repo2gal/prompts/director.md` | 第三轮 Director Plan JSON 约束 |
 | `tests/` | 离线测试，不应依赖 GitHub 或 LLM 网络 |
@@ -231,8 +237,11 @@ export REPO2GAL_API_KEY=sk_xxx
 - 不传 `--asset-pack` 时 WebGAL 默认素材仍只有 3 张背景和 1 首 BGM。
 - `python-github-backup` 不落盘仓库列表元数据，目前由一个受控官方 REST 请求补齐。
 - 全量大仓库备份可能很慢、很大；依赖上游增量机制，不自己再写缓存协议。
-- Quick Start 模式未实现；两个现有模式都仍是单场景产物。
-- Overview 在线采集使用轻量 flags（源码/Release/wiki），复用完整备份时跳过社区 JSON 解析。
+- 三种模式都仍是单场景产物；多场景 / 多章节切分尚未实现。
+- Overview 与 Quick Start 在线采集使用轻量 flags（Overview：源码/Release/wiki；
+  Quick Start：源码/Issue 与评论/wiki），复用完整备份时跳过无关 JSON 解析；
+  Quick Start 的起步任务依赖仓库真实使用 `good first issue` 一类标签，没有标签时
+  只能讲解如何自行筛选任务。
 - 演出随三轮生成默认内建；profile 为 `chronicle-subtle`（`--profile` 可换 cinematic）；
   阶段产物（草稿/批注/导演 JSON 各次尝试/反馈/报告）只有指定 `--save-stage-outputs`
   时才写入。

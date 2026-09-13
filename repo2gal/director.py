@@ -29,6 +29,7 @@ from typing import Any
 from jsonschema import Draft202012Validator
 
 from .asset_pack import AssetPack
+from .config import GAME_MODE_TITLES, NARRATION_FREE_MODES
 from .performance import (
     CAPABILITIES,
     PROFILES,
@@ -66,6 +67,8 @@ _MODE_RULES = {
     "chronicle": "narration 只用于没有具体角色说话的客观叙述；凡是角色说出口的话必须写成 dialogue。",
     "overview": "本模式不使用旁白：禁止 narration；带路的向导台词必须全部写成 dialogue，"
     "带文本的 choice beat 也必须写 speaker。",
+    "quickstart": "本模式不使用旁白：禁止 narration；带新人上手的维护者台词必须全部写成"
+    " dialogue，带文本的 choice beat 也必须写 speaker。",
 }
 
 
@@ -342,8 +345,13 @@ def validate_director(
                 report.add("error", "narration 的 speaker 必须为 null", beat_id=beat_id)
             if not text:
                 report.add("error", "narration 缺少 text", beat_id=beat_id)
-            if mode == "overview":
-                report.add("error", "Overview 模式不使用旁白，请改为向导角色的 dialogue", beat_id=beat_id)
+            if mode in NARRATION_FREE_MODES:
+                title = GAME_MODE_TITLES.get(mode, mode)
+                report.add(
+                    "error",
+                    f"{title} 模式不使用旁白，请改为角色的 dialogue",
+                    beat_id=beat_id,
+                )
         elif kind == "choice":
             choices = beat.get("choices") or []
             if not choices:
@@ -351,8 +359,13 @@ def validate_director(
             if text:
                 if speaker is not None and speaker not in cast_names:
                     report.add("error", f"choice beat 的 speaker 不在角色表中：{speaker!r}", beat_id=beat_id)
-                if speaker is None and mode == "overview":
-                    report.add("error", "Overview 模式禁止无说话人的 choice 文本", beat_id=beat_id)
+                if speaker is None and mode in NARRATION_FREE_MODES:
+                    title = GAME_MODE_TITLES.get(mode, mode)
+                    report.add(
+                        "error",
+                        f"{title} 模式禁止无说话人的 choice 文本",
+                        beat_id=beat_id,
+                    )
             for option in choices:
                 option_text = option.get("text") or ""
                 if any(token in option_text for token in (":", "|", ";", " -")):
@@ -575,7 +588,8 @@ def compile_draft_fallback(beats: list[str], *, cast: list[str], mode: str) -> s
     """重试耗尽后的确定性兜底：只凭第一轮草稿拼出可玩脚本。
 
     台词行按 ``角色名:台词`` 识别为 dialogue，其余按旁白处理；
-    Overview 模式没有旁白，无说话人文本归给向导（项目化身，角色表第一位）。
+    不使用旁白的模式（Overview / Quick Start）把无说话人文本归给带路角色
+    （项目化身，角色表第一位）。
     """
     guide = cast[0] if cast else None
     lines: list[str] = []
@@ -588,7 +602,7 @@ def compile_draft_fallback(beats: list[str], *, cast: list[str], mode: str) -> s
             if match and match.group("speaker") in cast:
                 lines.append(f"{match.group('speaker')}:{match.group('text').strip()};")
                 continue
-            if mode == "overview" and guide:
+            if mode in NARRATION_FREE_MODES and guide:
                 lines.append(f"{guide}:{line};")
             else:
                 lines.append(_narration_line(line))

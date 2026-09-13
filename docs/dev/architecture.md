@@ -2,30 +2,34 @@
 
 > 本文描述**当前实现和已锁定的边界**。历史设想放在 `docs/dev/early/`，不得把早期规划当成现状。
 
-当前基线：`v0.7.0`。Chronicle 主流程已于 2026-07-31 在真实 GitHub 仓库和真实 LLM
+当前基线：`v0.8.0`。Chronicle 主流程已于 2026-07-31 在真实 GitHub 仓库和真实 LLM
 环境中端到端实测通过。v0.4.0 落地 Asset Pack v1；v0.5.0 增加显式 Performance Plan
 动态演出；v0.6.0 新增仓库概览（Overview）模式；v0.6.1 修复旁白继承上一句 speaker 的问题；
 v0.6.2 明确 Overview 不使用旁白；v0.7.0 把剧本生成重构为三轮 LLM（自由创作草稿 →
 自然语言演出批注 → Director Plan JSON）+ 确定性编译 + 有界重试，合并原 Performance
-通道并删除插入式合并。
+通道并删除插入式合并；v0.8.0 新增 Quick Start（贡献者上手）模式，按模式选择 Issue
+采集范围并确定性提取起步任务，同时把“不使用旁白”收敛为 config 的
+`NARRATION_FREE_MODES`。
 
 版本号采用 SemVer 2.0.0；v0.7.0 删除 `--performance` 系列 CLI 参数并以三轮生成取代，
-属于公开不兼容变更，因此提升 MINOR。
+属于公开不兼容变更；v0.8.0 新增 Quick Start 模式属于向后兼容的新功能，两者都提升 MINOR。
 完整升级与多文件同步规则见 `CONTRIBUTING.md`「版本管理」。
 
 ## 1. 产品定位
 
 Repo2Gal 是“可游玩的开源项目文档生成器”，不是通用 Galgame 生成器。
 
-当前实现两种剧本模式：
+当前实现三种剧本模式：
 
 | `--mode` | 目标玩家 | 素材重点 | 剧情体验 |
 |---|---|---|---|
 | `chronicle`（默认） | 想了解项目历史、社区演变的人 | Issue/PR/Discussion、Release、README、wiki | 史诗编年史 |
 | `overview` | 第一次接触项目的人 | README、目录树、根级项目文件、Release、wiki | 新手村向导导览 |
+| `quickstart` | 想交出第一个改动的贡献者 | CONTRIBUTING、构建/测试入口与 CI 定义、目录树、README、新人友好 Issue | 老维护者带上手 |
 
-Quick Start（贡献者上手）模式仍在计划中。不要擅自把 MVP 扩成通用 Galgame、RPG 或
-可视化 IDE。
+Overview 与 Quick Start 都不使用旁白：带路角色全程说话，规则由
+`config.NARRATION_FREE_MODES` 单一持有。RP 圆桌模式（`--rp`）仍依赖外部 KiMo 引擎，
+属于计划项。不要擅自把 MVP 扩成通用 Galgame、RPG 或可视化 IDE。
 
 ## 2. 数据流
 
@@ -127,14 +131,15 @@ Repo2Gal **不负责**：
 
 不要把上游的 `--all` 直接作为默认值：它会隐式包含 hooks 与 Release assets。
 
-剧本模式对应两套显式 flags，都定义在 `fetcher.py`：
+剧本模式对应三套显式 flags，都定义在 `fetcher.py`：
 
 | 模式 | flags | 说明 |
 |---|---|---|
 | `chronicle` | `NARRATIVE_BACKUP_FLAGS` | 源码 + Issue/PR/Discussion + wiki + Release + label/milestone + fork |
 | `overview` | `OVERVIEW_BACKUP_FLAGS` | 只采源码 + Release + wiki；概览不需要社区讨论，显著降低首次备份时间 |
+| `quickstart` | `QUICKSTART_BACKUP_FLAGS` | 只采源码 + Issue/评论 + wiki；贡献者上手需要真实起步任务，但不需要 PR/Discussion/Release |
 
-复用已有备份时不重采数据；Overview 在 Context Builder 阶段还会跳过社区 JSON 解析，
+复用已有备份时不重采数据；Overview 跳过社区 JSON 解析，Quick Start 只解析 Issue JSON，
 因此即使复用 Chronicle 的完整备份也保持快速。
 
 ### 3.2 官方 GitHub REST API 例外
@@ -183,7 +188,7 @@ SPDX expression 使用 `packaging.licenses`，BCP 47 使用 `langcodes`，CSS Co
 
 | 文件 | 职责 | 不应承担 |
 |---|---|---|
-| `fetcher.py` | 按模式调上游备份工具；受控官方 REST 补充；构建 `RepoContext`；Overview 目录树/项目文件提取 | HTML 爬虫、通用 API 客户端 |
+| `fetcher.py` | 按模式调上游备份工具；受控官方 REST 补充；构建 `RepoContext`；Overview 目录树/项目文件、Quick Start 贡献者入口文件与起步任务提取 | HTML 爬虫、通用 API 客户端 |
 | `generator.py` | 确定性按模式选角、上下文渲染、第一轮创作 prompt 组装 | GitHub 抓取、WebGAL 打包、网络调用 |
 | `director.py` | 草稿规范化、批注/导演 prompt、Director Plan Schema/语义校验、确定性 WebGAL 编译、重试反馈与草稿兜底 | 网络调用、WebGAL 打包 |
 | `llm.py` | LLM transport 薄客户端：请求、错误包装、脱敏 | prompt 策略、重试框架 |
@@ -243,6 +248,20 @@ Overview 额外携带两类确定性提取字段，均由 Context Builder 生成
 Overview 模式下不解析 `issues/`、`pulls/`、`discussions/` JSON；这些字段仍然完整保留在
 原始备份层，仅不进入 Overview 的 `RepoContext`。
 
+Quick Start 额外携带两类确定性提取字段，同样由 Context Builder 生成：
+
+- `contributor_files`：贡献者入口文件摘录——CONTRIBUTING/DEVELOPMENT/HACKING、
+  构建与测试入口（Makefile、tox.ini、pyproject.toml、package.json 等）、PR 模板与
+  行为准则，外加按前缀确定性发现的 CI 工作流（`.github/workflows/*.yml`，最多 3 个）；
+  候选路径按仓库内相对路径匹配，因此 `.github/CONTRIBUTING.md` 这类嵌套路径也能命中，
+  逐文件与总量沿用同一套上限。
+- `starter_issues`：开放状态且带 `good first issue`、`help wanted`、`beginner` 等标签的
+  Issue，按编号倒序取前 `--threads` 条；仓库没有这类标签时为空，此时 prompt 明确要求
+  讲解如何自行筛选任务、不得编造 Issue 编号。
+
+Quick Start 模式下不解析 `pulls/`、`discussions/`、`releases/` JSON；这些数据仍完整保留在
+原始备份层。
+
 当前上游不会把仓库列表元数据单独落盘。v0.2.0 通过官方
 `GET /repos/{owner}/{repo}` 补齐，并保存为 `repo2gal-repository.json`，供离线复用。
 
@@ -292,7 +311,7 @@ v0.4.0 只实现 Local Provider，Git/AI Provider 仍是计划；核心没有 Pr
 一次只接受一个目录包，避免在没有真实需求时设计多包覆盖和依赖解析。
 
 素材包必须引擎无关。剧本引用逻辑 ID，例如 `background.archive`，WebGAL Adapter
-确定性映射为 `game/background/background-archive.png` 等目标。当前两种剧本模式共用
+确定性映射为 `game/background/background-archive.png` 等目标。当前三种剧本模式共用
 `background`、`character`、`bgm` 三类素材；不指定包时继续使用 WebGAL 默认文件名，指定包时
 默认背景/BGM 也会合并进 prompt 与 validator catalog，并由 Adapter 原样放行。
 逻辑 ID 强制以素材类型和点号开头，不能与 WebGAL 默认裸文件名形成歧义或遮蔽。
@@ -371,11 +390,17 @@ evidence 保存在 `third_party/asset-packs/`。
   风格与预算）；第三轮校验失败结构化回喂、有界重试（`--format-retries`，默认 2），
   重试耗尽走草稿确定性兜底；删除 `--performance`/`--performance-profile`/
   `--strict-performance`/`--save-*` 旧参数，新增 `--save-stage-outputs`
+- v0.8.0：新增 Quick Start（贡献者上手）模式——独立采集 flags（源码/Issue 与评论/wiki）、
+  贡献者入口文件（CONTRIBUTING、构建/测试入口、CI 工作流，按仓库内相对路径匹配，
+  支持 `.github/workflows/*.yml` 这类嵌套路径）与起步任务（开放且带
+  `good first issue`/`help wanted`/`beginner` 等标签的 Issue）确定性提取；
+  `RepoContext` 增加 `contributor_files` 与 `starter_issues`；Overview 与 Quick Start
+  统一按 `NARRATION_FREE_MODES` 拒绝 narration 与无说话人的 choice 文本
 
-`v0.7.0` 结论：Chronicle、Overview、单本地素材包闭环和动态演出均已实现；
-Quick Start 模式、Git/AI Provider 仍是计划，不得写成现有能力。
+`v0.8.0` 结论：Chronicle、Overview、Quick Start、单本地素材包闭环和动态演出均已实现；
+多场景拆分、RP 圆桌模式与 Git/AI Provider 仍是计划，不得写成现有能力。
 
-三轮生成默认开启，两种剧本模式通用。第一轮只写故事（`[B]` 锚点），第二轮按 beat
+三轮生成默认开启，三种剧本模式通用。第一轮只写故事（`[B]` 锚点），第二轮按 beat
 写自然语言演出批注，第三轮输出与草稿一一对应的 Director Plan JSON；`director.py`
 执行 Schema/能力表/角色状态机/预算校验并确定性编译 WebGAL（label = beat id，
 `screen.transition` 并入同 beat 的 changeBg）。校验失败的错误清单回喂第三轮重试；
@@ -384,9 +409,11 @@ Quick Start 模式、Git/AI Provider 仍是计划，不得写成现有能力。
 
 推荐下一步：
 
-1. 给备份解析器增加真实 `python-github-backup` fixture 回归样本。
+1. 给备份解析器增加真实 `python-github-backup` fixture 回归样本（含真实 Issue labels
+   与工作流文件的目录结构）。
 2. 用真实 LLM 和 CC0 示例包端到端验证三轮流程（创作/批注/导演 JSON 的质量与重试率），
-   建立固定仓库 golden cases。
-3. 再考虑 Quick Start 模式、多场景拆分和 Git Asset Provider；实现 Git Provider 前必须
-   重新调研成熟 Git/归档依赖。
+   建立固定仓库 golden cases；Quick Start 另需验证起步任务是否被如实引用、无标签仓库
+   是否遵守“不编造编号”。
+3. 再考虑多场景拆分与 RP 圆桌模式（后者依赖外部 KiMo 引擎）；实现 Git Asset Provider
+   前必须重新调研成熟 Git/归档依赖。
 4. AI Provider 继续后置，先明确服务条款快照、Prompt/seed 与 `LicenseRef-AI-*` 策略。

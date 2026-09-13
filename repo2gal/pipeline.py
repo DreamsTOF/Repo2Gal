@@ -1,4 +1,4 @@
-"""Chronicle / Overview 流程编排：唯一持有“先做什么、后做什么”的地方。
+"""Chronicle / Overview / Quick Start 流程编排：唯一持有“先做什么、后做什么”的地方。
 
 设计原则：
 - 直线生成 + 有界重试：抓取 -> 选角 -> 草稿 prompt -> 三轮 LLM

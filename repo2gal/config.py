@@ -18,13 +18,20 @@ DEFAULT_LLM_TIMEOUT = 300
 DEFAULT_FORMAT_RETRIES = 2
 
 # 剧本生成模式。Chronicle（编年史）是 v0.1.0 起的默认模式；
-# Overview（仓库概览）是 v0.6.0 新增的第二种游戏模式。
-GAME_MODES = ("chronicle", "overview")
+# Overview（仓库概览）是 v0.6.0 新增的第二种游戏模式；
+# Quick Start（贡献者上手）是 v0.8.0 新增的第三种游戏模式。
+GAME_MODES = ("chronicle", "overview", "quickstart")
 DEFAULT_GAME_MODE = "chronicle"
 GAME_MODE_TITLES = {
     "chronicle": "编年史",
     "overview": "仓库概览",
+    "quickstart": "贡献者上手",
 }
+
+# 不使用旁白的模式：全部台词都必须由角色亲口说出。
+# Overview 自 v0.6.2 起如此（WebGAL 4.6.2 会把无说话人的文本渲染成上一句 speaker）；
+# Quick Start 与之同构——带新人上手的维护者全程说话，不靠旁白解说。
+NARRATION_FREE_MODES = ("overview", "quickstart")
 
 # WebGAL 发行版自带的兼容默认素材；使用 Asset Pack 时仍与包内资源并存。
 DEFAULT_BACKGROUNDS = ["bg.webp", "WebGalEnter.webp", "WebGAL_New_Enter_Image.webp"]

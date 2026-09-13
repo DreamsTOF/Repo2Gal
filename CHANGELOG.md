@@ -4,6 +4,27 @@
 [Semantic Versioning 2.0.0](https://semver.org/)；`0.y.z` 阶段的新功能提升 `MINOR`，
 兼容缺陷修复提升 `PATCH`，公开不兼容变更至少提升 `MINOR`。
 
+## v0.8.0 — 2026-09-13
+
+**Quick Start（贡献者上手）模式**：
+
+- 新增 `--mode quickstart`：为“第一次想给这个项目提交改动的人”生成上手剧本，路线覆盖
+  欢迎、拿到代码、跑通测试与本地预览、代码地图、提交与评审规矩、第一个真实任务与
+  后续提问渠道；与现有两种模式一样走三轮 LLM + 确定性编译与 validator 硬边界，
+  产物标题为「`owner/repo` 贡献者上手」，存档键使用
+  `repo2gal_<owner>_<repo>_quickstart` 独立隔离；
+- Quick Start 使用独立采集范围（源码、Issue 与评论、wiki），不拉取 PR/Discussion/Release：
+  起步任务来自开放且带 `good first issue`、`help wanted`、`beginner` 等标签的真实 Issue，
+  按编号倒序排序，数量由 `--threads` 控制；没有匹配标签时 prompt 明确要求不得编造编号；
+- 新增确定性贡献者素材提取：CONTRIBUTING、构建/测试入口、PR 模板与 CI 工作流
+  （`.github/workflows/*.yml`，最多 3 个）摘录；项目文件匹配改为仓库内相对路径，
+  因此 `.github/CONTRIBUTING.md` 这类嵌套路径同样可命中；`RepoContext` 新增
+  `contributor_files` 与 `starter_issues` 两个字段，其他模式保持为空；
+- Quick Start 与 Overview 一样不使用旁白：导演 JSON 校验与草稿兜底统一按
+  `NARRATION_FREE_MODES`（config 为单一来源）拒绝 narration 与无说话人的 choice 文本，
+  兜底编译把无说话人文本归给带路角色；
+- 离线测试从 204 项扩充到 232 项。
+
 ## v0.7.0 — 2026-08-31
 
 **剧本生成重构为三轮 LLM + 确定性编译（Director 流程）**：

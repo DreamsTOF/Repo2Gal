@@ -1,11 +1,12 @@
-"""GitHub 采集适配层（Chronicle / Overview 模式）。
+"""GitHub 采集适配层（Chronicle / Overview / Quick Start 模式）。
 
 GitHub 的认证、分页、限流、重试、GraphQL、Discussion、wiki 与增量备份
 全部委托给成熟项目 ``josegonzalez/python-github-backup``。本模块只做三件事：
 
 1. 以 subprocess 调用 ``github-backup``，按剧本模式选择采集范围；
 2. 把其落盘的 Git 仓库和 JSON 归一化成 RepoContext；
-3. 为 Overview 模式确定性提取目录树与根级项目文件摘录。
+3. 确定性提取模式专用素材：Overview 的目录树与根级项目文件，
+   Quick Start 的贡献者入口文件与可作为“第一个任务”的起步 Issue。
 
 项目明确禁止在已有成熟开源实现时自造 GitHub API 客户端。
 """
@@ -53,6 +54,7 @@ class Thread:
     comment_count: int
     body: str
     comments: list[Comment] = field(default_factory=list)
+    labels: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -87,6 +89,8 @@ class RepoContext:
     contributors: list[Contributor] = field(default_factory=list)
     releases: list[Release] = field(default_factory=list)
     threads: list[Thread] = field(default_factory=list)
+    contributor_files: str = ""
+    starter_issues: list[Thread] = field(default_factory=list)
     backup_dir: str = ""
 
     @property
@@ -136,6 +140,32 @@ OVERVIEW_BACKUP_FLAGS = (
     "--repositories",
     "--releases",
     "--wikis",
+)
+
+# Quick Start（贡献者上手）面向真的想提交改动的人：除了源码与 wiki，只需要
+# Issue 与评论——用它确定性挑出“第一个任务”。Release、PR、Discussion 与
+# label 列表对上手路径没有直接价值，不进本 flags 集合。
+QUICKSTART_BACKUP_FLAGS = (
+    "--repositories",
+    "--issues",
+    "--issue-comments",
+    "--wikis",
+)
+
+# 可作为“第一个任务”的 Issue 标签（大小写与空白归一后匹配）。
+_STARTER_ISSUE_LABELS = frozenset(
+    {
+        "good-first-issue",
+        "help wanted",
+        "help-wanted",
+        "first-timers-only",
+        "first timers only",
+        "beginner",
+        "beginner friendly",
+        "easy",
+        "starter",
+        "low hanging fruit",
+    }
 )
 
 # Overview 上下文中的目录树过滤与截断参数。
@@ -209,6 +239,46 @@ _OVERVIEW_PROJECT_FILES = (
 )
 _PROJECT_FILE_LIMIT = 1000
 _PROJECT_FILES_TOTAL_LIMIT = 6000
+
+# Quick Start 的贡献者入口文件：贡献指南、构建/测试入口、PR 模板与行为准则。
+# 路径按仓库内相对路径匹配（例如 .github/CONTRIBUTING.md），不限于根级。
+_QUICKSTART_PROJECT_FILES = (
+    "CONTRIBUTING.md",
+    "CONTRIBUTING.rst",
+    "CONTRIBUTING.txt",
+    "CONTRIBUTING",
+    ".github/CONTRIBUTING.md",
+    "docs/CONTRIBUTING.md",
+    "DEVELOPMENT.md",
+    "docs/DEVELOPMENT.md",
+    "HACKING.md",
+    "CODE_OF_CONDUCT.md",
+    "CODEOWNERS",
+    ".github/CODEOWNERS",
+    "Makefile",
+    "makefile",
+    "Justfile",
+    "justfile",
+    "Taskfile.yml",
+    "tox.ini",
+    "noxfile.py",
+    "pyproject.toml",
+    "setup.py",
+    "package.json",
+    "Cargo.toml",
+    "go.mod",
+    "CMakeLists.txt",
+    "Dockerfile",
+    "docker-compose.yml",
+    ".github/PULL_REQUEST_TEMPLATE.md",
+    ".github/pull_request_template.md",
+    "PULL_REQUEST_TEMPLATE.md",
+)
+
+# CI 工作流文件名随仓库而异，按目录前缀确定性发现并限量摘录。
+_WORKFLOW_PREFIX = ".github/workflows/"
+_WORKFLOW_SUFFIXES = (".yml", ".yaml")
+_WORKFLOW_FILE_LIMIT = 3
 
 
 def run_backup(
@@ -403,6 +473,25 @@ def _comments(items: Iterable[dict[str, Any]], limit: int = 20) -> list[Comment]
     return result[:limit]
 
 
+def _labels(items: Any) -> list[str]:
+    """Issue/PR JSON 的 labels 是对象数组；只保留名称，供起步任务筛选使用。"""
+    names: list[str] = []
+    for item in items or []:
+        name = item.get("name") if isinstance(item, dict) else item
+        if isinstance(name, str) and name.strip():
+            names.append(name.strip())
+    return names
+
+
+def _is_starter_issue(thread: Thread) -> bool:
+    """判断 Issue 是否带“新人可上手”标签（标签名先做大小写与空白归一）。"""
+    for label in thread.labels:
+        normalized = " ".join(label.casefold().split())
+        if normalized in _STARTER_ISSUE_LABELS or normalized.startswith("good first issue"):
+            return True
+    return False
+
+
 def _thread_from_issue(data: dict[str, Any]) -> Thread:
     comments = _comments(data.get("comment_data") or [])
     return Thread(
@@ -415,6 +504,7 @@ def _thread_from_issue(data: dict[str, Any]) -> Thread:
         comment_count=max(data.get("comments", 0), len(comments)),
         body=_clean_body(data.get("body"), 800),
         comments=comments,
+        labels=_labels(data.get("labels")),
     )
 
 
@@ -436,6 +526,7 @@ def _thread_from_pull(data: dict[str, Any]) -> Thread:
         comment_count=max(count, len(comments)),
         body=_clean_body(data.get("body"), 800),
         comments=comments,
+        labels=_labels(data.get("labels")),
     )
 
 
@@ -494,17 +585,22 @@ def _read_project_files(
     *,
     reference: str,
     git_files: list[str],
+    names: tuple[str, ...] = _OVERVIEW_PROJECT_FILES,
 ) -> str:
-    """读取 Overview 需要的根级项目文件摘录（安装/构建/贡献入口）。"""
+    """读取指定项目文件摘录（安装/构建/贡献入口）。
+
+    ``names`` 使用仓库内相对路径匹配，因此既能取根级文件，也能取
+    ``.github/workflows/ci.yml`` 这类嵌套路径。
+    """
     if not directory.is_dir():
         return ""
-    root_files = {name.casefold() for name in git_files if "/" not in name}
+    listed = {path.casefold() for path in git_files}
     chunks: list[str] = []
-    for name in _OVERVIEW_PROJECT_FILES:
+    for name in names:
         if sum(map(len, chunks)) >= _PROJECT_FILES_TOTAL_LIMIT:
             break
         if reference or git_files:
-            if name.casefold() not in root_files:
+            if name.casefold() not in listed:
                 continue
         elif not (directory / name).is_file():
             continue
@@ -519,6 +615,37 @@ def _read_project_files(
             continue
         chunks.append(f"### {name}\n{_clean_project_file(raw, _PROJECT_FILE_LIMIT)}")
     return "\n\n".join(chunks)
+
+
+def _discover_workflow_files(directory: Path, git_files: list[str]) -> tuple[str, ...]:
+    """确定性发现 CI 工作流文件；文件名随仓库而异，因此按前缀扫描并限量。"""
+    if git_files:
+        candidates = [
+            path
+            for path in git_files
+            if path.startswith(_WORKFLOW_PREFIX)
+            and path.lower().endswith(_WORKFLOW_SUFFIXES)
+        ]
+    else:
+        candidates = [
+            str(path.relative_to(directory))
+            for path in sorted((directory / ".github" / "workflows").glob("*"))
+            if path.is_file() and path.name.lower().endswith(_WORKFLOW_SUFFIXES)
+        ]
+    return tuple(sorted(candidates)[:_WORKFLOW_FILE_LIMIT])
+
+
+def _read_contributor_files(
+    directory: Path,
+    *,
+    reference: str,
+    git_files: list[str],
+) -> str:
+    """读取 Quick Start 需要的贡献者入口文件与 CI 定义摘录。"""
+    names = _QUICKSTART_PROJECT_FILES + _discover_workflow_files(directory, git_files)
+    return _read_project_files(
+        directory, reference=reference, git_files=git_files, names=names
+    )
 
 
 def _local_file_paths(directory: Path) -> list[str]:
@@ -679,6 +806,7 @@ def context_from_backup(
     metadata = metadata if metadata is not None else _read_metadata(repo_backup_dir)
 
     reference, git_files = _git_files(source_dir)
+    starter_issues: list[Thread] = []
     if mode == "chronicle":
         threads = [
             *(_thread_from_issue(item) for item in _load_json_files(repo_backup_dir / "issues")),
@@ -690,13 +818,28 @@ def context_from_backup(
         ]
         threads.sort(key=lambda item: (item.comment_count, item.created_at), reverse=True)
         threads = threads[:top_threads]
+    elif mode == "quickstart":
+        # Quick Start 只读 Issue：把开放且带新人标签的 Issue 作为起步任务，
+        # 历史争论不进贡献者上手剧本；起步任务按编号倒序，最新的排在前面。
+        threads = []
+        starter_issues = [
+            _thread_from_issue(item)
+            for item in _load_json_files(repo_backup_dir / "issues")
+        ]
+        starter_issues = [
+            item
+            for item in starter_issues
+            if item.state == "open" and _is_starter_issue(item)
+        ]
+        starter_issues.sort(key=lambda item: item.number, reverse=True)
+        starter_issues = starter_issues[:top_threads]
     else:
         # Overview 不读社区讨论：既省去数千个 JSON 的解析时间，也从数据源上
         # 阻止历史争论进入“快速了解项目”的 prompt。
         threads = []
 
     activity: Counter[str] = Counter()
-    for thread in threads:
+    for thread in (*threads, *starter_issues):
         if thread.author != "unknown":
             activity[thread.author] += 1
         activity.update(comment.author for comment in thread.comments if comment.author != "unknown")
@@ -742,24 +885,38 @@ def context_from_backup(
         project_files=_read_project_files(
             source_dir, reference=reference, git_files=git_files
         ),
+        contributor_files=(
+            _read_contributor_files(source_dir, reference=reference, git_files=git_files)
+            if mode == "quickstart"
+            else ""
+        ),
         contributors=[Contributor(login=name, contributions=count) for name, count in activity.most_common(8)],
         releases=releases[:10],
         threads=threads,
+        starter_issues=starter_issues,
         backup_dir=str(repo_backup_dir),
     )
     if mode == "overview":
-        thread_summary = "社区讨论（Overview 已跳过）"
+        material_summary = "社区讨论（Overview 已跳过）"
+    elif mode == "quickstart":
+        material_summary = f"{len(context.starter_issues)} 个起步任务（Issue good first issue 等）"
     else:
-        thread_summary = f"{len(context.threads)} 条热门讨论（含 Discussion）"
+        material_summary = f"{len(context.threads)} 条热门讨论（含 Discussion）"
     log(
-        f"上下文：{thread_summary}，"
+        f"上下文：{material_summary}，"
         f"{len(context.releases)} 个 Release，wiki={'有' if context.wiki_excerpt else '无'}，"
         f"目录树={'有' if context.file_tree else '无'}，"
-        f"项目文件={'有' if context.project_files else '无'}"
+        f"项目文件={'有' if context.project_files else '无'}，"
+        f"贡献者入口={'有' if context.contributor_files else '无'}"
     )
     if mode == "overview":
         if not context.readme_excerpt and not context.project_files and not context.file_tree:
             raise FetchError("备份中没有 README、项目配置文件或源码目录结构，素材不足以生成仓库概览")
+    elif mode == "quickstart":
+        if not context.readme_excerpt and not context.contributor_files and not context.file_tree:
+            raise FetchError(
+                "备份中没有 README、贡献者入口文件或源码目录结构，素材不足以生成贡献者上手剧本"
+            )
     elif not context.threads and not context.readme_excerpt and not context.wiki_excerpt:
         raise FetchError("备份中没有 README、wiki 或社区讨论，素材不足以生成剧情")
     return context
@@ -795,9 +952,12 @@ def fetch_context(
         metadata = _read_metadata(repo_dir)
     else:
         metadata = fetch_repository_metadata(owner, repo, token or "", log=log)
-        backup_flags = (
-            NARRATIVE_BACKUP_FLAGS if mode == "chronicle" else OVERVIEW_BACKUP_FLAGS
-        )
+        if mode == "chronicle":
+            backup_flags = NARRATIVE_BACKUP_FLAGS
+        elif mode == "quickstart":
+            backup_flags = QUICKSTART_BACKUP_FLAGS
+        else:
+            backup_flags = OVERVIEW_BACKUP_FLAGS
         repo_dir = run_backup(
             owner,
             repo,

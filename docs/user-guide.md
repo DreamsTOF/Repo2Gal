@@ -5,7 +5,7 @@
 
 ## 1. 这是什么
 
-Repo2Gal 把一个 GitHub 仓库变成一部**可游玩的视觉小说**。当前有两种剧本模式：
+Repo2Gal 把一个 GitHub 仓库变成一部**可游玩的视觉小说**。当前有三种剧本模式：
 
 - **Chronicle（编年史，默认）**：讲述项目为何诞生、经历过哪些争论、社区如何演变。
   素材来自源码、README、Issue、PR、Discussion、wiki 与 Release。
@@ -13,8 +13,12 @@ Repo2Gal 把一个 GitHub 仓库变成一部**可游玩的视觉小说**。当�
   核心特性、安装与快速开始、目录结构和继续深入入口；该模式不使用旁白，所有介绍
   都由向导角色亲口说出。素材来自源码、README、目录树、根级项目文件、Release 与
   wiki，采集更轻量。
+- **Quick Start（贡献者上手）**：面向想给项目交第一个改动的人，由项目化身带路：
+  准备开发环境、跑测试、看代码地图、遵守提交流程，最后从一个真实的
+  `good first issue` 起步任务开始动手；同样不使用旁白。素材来自源码、README、
+  目录树与项目文件，以及开放的新人友好 Issue。
 
-两种模式的角色都由代码确定性推导（不交给模型胡编），产物都是纯静态网站，
+三种模式的角色都由代码确定性推导（不交给模型胡编），产物都是纯静态网站，
 双击或任意静态托管即可游玩。
 
 **先玩一局在线演示**（就是本项目自己的编年史，用当前版本代码 dogfooding 生成）：
@@ -52,18 +56,25 @@ python3 -m http.server -d output/<repo> 8000   # 本地预览
 ```bash
 .venv/bin/repo2gal owner/repo                    # Chronicle 编年史（默认）
 .venv/bin/repo2gal owner/repo --mode overview    # Overview 仓库概览
+.venv/bin/repo2gal owner/repo --mode quickstart  # Quick Start 贡献者上手
 ```
 
-Chronicle 产物默认写入 `output/<repo>`，Overview 默认写入 `output/<repo>-overview`，
-两种模式不会互相覆盖；也可以用 `--output` 显式指定。Overview 的采集范围只有源码、
-Release 与 wiki（不拉取 Issue/PR/Discussion），首次运行通常快很多；复用已有完整备份
-时也会跳过社区数据解析。两种模式共用同一套 validator、Asset Pack、动态演出与打包流程。
+Chronicle 产物默认写入 `output/<repo>`，其他模式写入 `output/<repo>-<模式名>`
+（如 `output/<repo>-overview`、`output/<repo>-quickstart`），互不覆盖；也可以用
+`--output` 显式指定。Overview 的采集范围只有源码、Release 与 wiki，Quick Start 只有
+源码、Issue 与评论、wiki，都不拉取不需要的社区数据，首次运行通常快很多；复用已有完整
+备份时也会跳过无关解析。三种模式共用同一套 validator、Asset Pack、动态演出与打包流程。
+
+Quick Start 的起步任务取自带 `good first issue`、`help wanted`、`beginner` 等标签的
+开放 Issue，数量由 `--threads` 控制（默认 12）；仓库里没有这类标签时，剧本会改为讲解
+如何自己筛选合适的任务，不会编造 Issue 编号。
 
 ### 不花钱 / 离线玩法
 
 ```bash
 .venv/bin/repo2gal vuejs/core --dry-run        # 只抓数据并打印 prompt，不调用 LLM
 .venv/bin/repo2gal vuejs/core --mode overview --dry-run   # 查看 Overview prompt
+.venv/bin/repo2gal vuejs/core --mode quickstart --dry-run # 查看 Quick Start prompt
 .venv/bin/repo2gal vuejs/core --script my_story.txt   # 手写剧本走完打包流程
 .venv/bin/repo2gal vuejs/core --reuse-backup   # 复用上次原始备份，不联网
 ```
@@ -130,10 +141,13 @@ manifest、LICENSE、NOTICE 与 evidence 保存到 `third_party/asset-packs/`。
 ### 一次生成要多久、花多少
 
 - Chronicle 采集耗时取决于仓库的 Issue/PR/Discussion 规模：全量第一次可能较慢，
-  重跑走上游增量备份；Overview 只采源码、Release 与 wiki，通常快得多；
-- 两种模式都只有一次 LLM 调用（单章剧本），成本取决于所选模型与上下文长度，
-  Overview 的上下文通常更短；
-- `--dry-run` 完全不花钱，适合先看 prompt 与素材质量。
+  重跑走上游增量备份；Overview 只采源码、Release 与 wiki，Quick Start 只采源码、
+  Issue 与评论、wiki，通常都快得多；
+- 三种模式每次都跑三轮 LLM（创作草稿 → 演出批注 → 导演 JSON），单次运行最多
+  3 + `--format-retries` 次调用（默认共 5 次），成本约为早期单轮流程的 2.5 倍起，
+  取决于所选模型与上下文长度；Overview 与 Quick Start 的上下文通常更短；
+- `--dry-run` 完全不花钱，适合先看 prompt 与素材质量；`--save-stage-outputs` 可保存
+  三轮各次尝试与校验报告，便于排查质量波动。
 
 ## 4. 常见问题
 

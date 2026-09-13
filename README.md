@@ -7,10 +7,11 @@
 
 输入一个 GitHub 仓库地址，输出一个静态网站：默认以视觉小说（编年史）的形式讲述
 该项目的真实历史——它为何诞生、经历过哪些争论、社区如何演变；也可以切换到
-**仓库概览（Overview）** 模式，生成给第一次接触项目的人看的“新手村向导”剧情。
+**仓库概览（Overview）** 模式，生成给第一次接触项目的人看的“新手村向导”剧情，
+或用 **Quick Start（贡献者上手）** 模式生成带新人交第一个改动上手的剧本。
 剧情素材全部来自仓库的真实源码、README、Issue、PR、Discussion、wiki 与 Release。
 
-当前版本：v0.7.0（版本历史见 [CHANGELOG.md](CHANGELOG.md)）。项目版本严格遵循
+当前版本：v0.8.0（版本历史见 [CHANGELOG.md](CHANGELOG.md)）。项目版本严格遵循
 [Semantic Versioning 2.0.0](https://semver.org/)，具体升级和同步规则见
 [CONTRIBUTING.md](CONTRIBUTING.md#版本管理)。
 
@@ -30,6 +31,7 @@ https://repo2gal.rhopaper.top/demo
 
 - [x] 全量仓库数据采集：源码、Issue、PR、Discussion、wiki、Release、label、milestone
 - [x] Overview 轻量采集：源码、Release、wiki，不拉取 Issue/PR/Discussion
+- [x] Quick Start 轻量采集：源码、Issue 与评论、wiki，不拉取 PR/Discussion/Release
 - [x] 官方 GitHub REST 仓库概览补充（Star、topics、语言、创建时间等），落盘可离线复用
 - [x] 上游增量备份与 `--reuse-backup` 离线复用
 - [x] 采集进度实时显示
@@ -41,18 +43,19 @@ https://repo2gal.rhopaper.top/demo
 
 - [x] Chronicle 模式剧本生成（单场景线性叙事 + 少量分支）
 - [x] Overview 模式剧本生成（新手村向导：定位、特性、安装用法与目录地图，全程由角色亲口讲述）
+- [x] Quick Start 模式剧本生成（贡献者上手：开发环境、测试与 CI、代码地图、提交流程
+      与真实起步任务，同样全程由角色亲口讲述）
 - [x] 三轮 LLM 协作生成：自由创作草稿 → 自然语言演出批注 → 导演 JSON 确定性编译
 - [x] 动态演出默认内建（立绘出入场/移动/摇晃/预设动画、背景转场、Pixi 特效），
       profile 控制风格与预算
 - [x] 确定性角色表白名单（Chronicle：项目化身 / 核心贡献者 / 技术栈精灵；
-      Overview：项目向导 / 技术栈精灵）
+      Overview：项目向导 / 技术栈精灵；Quick Start：项目化身 / 维护者 / 技术栈精灵）
 - [x] 任意 OpenAI 兼容端点（`--base-url` / `--model` / 环境变量）
 - [x] `--dry-run` / `--script` / `--save-prompt` 省钱与离线路径
 - [x] 导演 JSON 校验失败有界重试（默认 2 次）+ 草稿确定性兜底
 - [ ] RP 圆桌模式（`--rp`）：多角色独立上下文、以角色自身视角互动生成剧本，
       依赖外部 KiMo 引擎（独立包 + 薄适配，KiMo 首个可用版本发布后接入）
 - [ ] 多场景 / 多章节剧情切分
-- [ ] Quick Start（贡献者上手）模式
 
 ### 校验与安全
 
@@ -84,7 +87,7 @@ https://repo2gal.rhopaper.top/demo
 
 - [x] 统一错误体系与退出码契约、错误信息脱敏
 - [x] 显式管线（pipeline）与可注入依赖，全流程可离线端到端测试
-- [x] 离线测试套件（204 项）
+- [x] 离线测试套件（232 项）
 - [x] 文档体系：用户指南、开发规约、Agent 指南、部署文档
 - [x] GitHub Actions 离线 CI 与 `main` 成功后自动生成/部署演示（需仓库 secrets）
 - [ ] python-github-backup 真实 fixture 回归样本
@@ -118,9 +121,17 @@ python3 -m http.server -d output/<repo> 8000   # 打开 http://localhost:8000 �
 python3 -m http.server -d output/<repo>-overview 8000   # Overview 默认输出目录
 ```
 
-两种模式共用抓取、validator、Asset Pack 与打包流程，差异在采集范围、上下文构建、
+生成「贡献者上手」模式，传 `--mode quickstart`：
+
+```bash
+.venv/bin/repo2gal owner/repo --mode quickstart
+python3 -m http.server -d output/<repo>-quickstart 8000   # Quick Start 默认输出目录
+```
+
+三种模式共用抓取、validator、Asset Pack 与打包流程，差异在采集范围、上下文构建、
 角色表和 prompt。Overview 只采集源码、Release 与 wiki，适合给第一次接触项目的玩家
-快速介绍“是什么、怎么用、代码怎么组织”。
+快速介绍“是什么、怎么用、代码怎么组织”；Quick Start 只采集源码、Issue 与评论、wiki，
+把开放的新人友好 Issue 当作起步任务，带玩家走完“跑起来 → 改一处 → 提交”的上手路径。
 
 使用仓库内置的 CC0 Chronicle 素材包：
 
@@ -235,8 +246,8 @@ Discussion 回复、Issue timeline、wiki clone 和增量备份全部交给成�
 搜索引擎爬取、调用非官方接口或自行实现通用 GitHub 客户端。
 
 默认 Chronicle 采集叙事所需的完整文本数据；`--mode overview` 只采集源码、Release
-与 wiki，不拉取 Issue/PR/Discussion。两种模式都不默认下载 Release 二进制和用户附件
-（可能高达数十 GB），后者留作未来的显式选项。原始备份保存在
+与 wiki，`--mode quickstart` 只采集源码、Issue 与评论、wiki。三种模式都不默认下载
+Release 二进制和用户附件（可能高达数十 GB），后者留作未来的显式选项。原始备份保存在
 `.repo2gal/backups/<owner>/repositories/<repo>/`。
 
 ### 为什么必须有 validator
@@ -283,11 +294,13 @@ Director Plan JSON；`director.py` 用 beat 一对一锚点、角色状态机、
 ## 限制
 
 - 不传 `--asset-pack` 时只有 WebGAL 内置的 3 张背景和 1 首 BGM；
-- 当前只支持一个本地素材包（内置示例主题为 Chronicle，同样可用于 Overview），
+- 当前只支持一个本地素材包（内置示例主题为 Chronicle，三种模式都可使用），
   不支持多包覆盖、Git 下载或 AI 生成；
-- Chronicle 的全量 Issue/PR/Discussion 备份首次可能较慢；Overview 模式采集范围更小，
-  通常快得多；
-- Quick Start（贡献者上手）模式与多场景产物仍在计划中。
+- Chronicle 的全量 Issue/PR/Discussion 备份首次可能较慢；Overview 与 Quick Start
+  的采集范围更小，通常快得多；
+- Quick Start 的起步任务依赖仓库真的使用 `good first issue` 一类标签，没有这类标签时
+  只能讲解如何自己筛选任务；
+- 三种模式都只生成单场景产物，多场景 / 多章节切分仍在计划中。
 
 ## 文档
 
