@@ -91,7 +91,11 @@ jobs:
       - name: 生成剧本与产物
         env:
           GITHUB_TOKEN: ${{ secrets.TARGET_REPO_TOKEN || github.token }}
+          # LLM 凭据：api key 走 secret；base url 与模型名不是机密，走 repository/environment variables
+          # 未设置时为空字符串，repo2gal 会回落到默认（https://api.deepseek.com/v1 / deepseek-v4-pro）
           REPO2GAL_API_KEY: ${{ secrets.REPO2GAL_API_KEY }}
+          REPO2GAL_BASE_URL: ${{ vars.REPO2GAL_BASE_URL }}
+          REPO2GAL_MODEL: ${{ vars.REPO2GAL_MODEL }}
           TARGET_REPO: ${{ inputs.target_repo }}
           MODE: ${{ inputs.mode }}
           PROFILE: ${{ inputs.profile }}
