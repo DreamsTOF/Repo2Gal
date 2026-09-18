@@ -25,7 +25,7 @@
 - `text` 与选项文本禁止出现英文分号 `;` 和「空格+连字符」（" -"）；选项文本还禁止冒号 `:` 与竖线 `|`。
 - `stage.background` / `stage.bgm` 只能逐字来自「可用素材」；不需要切换就省略或写 null。
 - `cue.anchor`：before / during / after。
-- `screen.transition` 动作必须与同一 beat 的 `stage.background` 一起出现；shockwaveIn 用 `phase: "enter"`，shockwaveOut 用 `phase: "exit"`。
+- `screen.transition` 动作必须与同一 beat 的 `stage.background` 一起出现；`preset` 只能取 shockwaveIn / shockwaveOut，shockwaveIn 用 `phase: "enter"`，shockwaveOut 用 `phase: "exit"`；`phase`、`preset`、`duration` 都必填（`duration` 取 instant / short / medium / long）。
 - `choice` beat 必须有 `choices` 数组，每个 `target` 必须是草稿中存在的 beat id；choice beat 不要再设置 `jump`。
 - `jump` 可选，`target` 必须是草稿中存在的 beat id。
 - `title` 与 `subtitle` 各一行（可省略 subtitle）；由系统生成的 `sceneId`、`storyHash`、`profile` 照抄输入即可。

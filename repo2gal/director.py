@@ -47,6 +47,9 @@ from .performance import (
 
 DIRECTOR_SCHEMA_URI = "https://repo2gal.dev/schemas/director/v1.json"
 
+#: 转场缺 duration 时的兜底时长（schema 已要求必填，这里只为不让编译期抛异常）。
+DEFAULT_TRANSITION_DURATION = "medium"
+
 _SCHEMA = json.loads(
     resources.files("repo2gal")
     .joinpath("schemas/director-v1.schema.json")
@@ -229,10 +232,13 @@ def load_director(
         validator.iter_errors(plan), key=lambda error: tuple(str(p) for p in error.absolute_path)
     )
     if errors:
-        report.add(
-            "error",
-            "导演计划 Schema 校验失败：" + "；".join(error.message for error in errors[:8]),
-        )
+        # oneOf/anyOf 只报顶层消息（"is not valid under any of the given schemas"）时，
+        # 重试反馈里看不出该改哪个字段，所以把一层 context 的子错误也带上（去重后限长）。
+        messages: list[str] = []
+        for error in errors[:8]:
+            messages.append(error.message)
+            messages.extend(sub.message for sub in error.context)
+        report.add("error", "导演计划 Schema 校验失败：" + "；".join(list(dict.fromkeys(messages))[:12]))
         return None
     report.schema_valid = True
     return plan
@@ -421,11 +427,11 @@ def validate_director(
             if kind_ == "figure.animate" and action["preset"] not in CAPABILITIES["figureAnimations"]:
                 report.add("error", f"未注册的立绘动画 preset：{action['preset']}", beat_id=beat_id)
             if kind_ == "screen.transition":
-                if action["preset"] not in CAPABILITIES["transitionPresets"]:
-                    report.add("error", f"未注册的转场 preset：{action['preset']}", beat_id=beat_id)
+                if action.get("preset") not in CAPABILITIES["transitionPresets"]:
+                    report.add("error", f"未注册的转场 preset：{action.get('preset')}", beat_id=beat_id)
                 if stage.get("background") is None:
                     report.add("error", "screen.transition 必须与同 beat 的 stage.background 一起出现", beat_id=beat_id)
-                expected_phase = "exit" if action["preset"] == "shockwaveOut" else "enter"
+                expected_phase = "exit" if action.get("preset") == "shockwaveOut" else "enter"
                 if action.get("phase") != expected_phase:
                     report.add("error", f"转场 preset {action['preset']} 必须使用 phase={expected_phase}", beat_id=beat_id)
             if kind_ == "screen.effect":
@@ -515,15 +521,15 @@ def compile_director(plan: dict[str, Any], *, asset_pack: AssetPack | None) -> s
 
         cue = beat.get("cue") or {}
         actions = cue.get("actions") or []
-        transition_args = [
-            item
-            for action in actions
-            if action["kind"] == "screen.transition"
-            for item in (
-                f"-{action['phase']}={action['preset']}",
-                f"-{action['phase']}Duration={_duration(action['duration'])}",
-            )
-        ]
+        # schema 已要求 screen.transition 的 phase/preset/duration 必填；这里再兜一层，
+        # 保证任何"已通过校验的计划"都不会在编译期变成内部错误（历史缺陷：KeyError: 'duration'）。
+        transition_args: list[str] = []
+        for action in actions:
+            if action["kind"] != "screen.transition" or not action.get("preset"):
+                continue
+            phase = action.get("phase") or "enter"
+            duration = _duration(action.get("duration") or DEFAULT_TRANSITION_DURATION)
+            transition_args += [f"-{phase}={action['preset']}", f"-{phase}Duration={duration}"]
         body_actions = [action for action in actions if action["kind"] != "screen.transition"]
 
         stage = beat.get("stage") or {}

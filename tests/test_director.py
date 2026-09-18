@@ -383,6 +383,20 @@ def test_validate_rejects_transition_phase_mismatch():
     assert any("phase=enter" in message for message in error_messages(report))
 
 
+def test_validate_rejects_transition_without_duration():
+    """转场的 phase/preset/duration 都是必填：曾因 schema 只要求 kind，
+    缺 duration 的计划能过校验却在编译期 KeyError，把整轮生成拖成内部错误。"""
+    plan = two_beat_plan()
+    plan["beats"][0]["stage"] = {"background": "bg.webp"}
+    plan["beats"][0]["cue"] = {
+        "anchor": "before",
+        "actions": [{"kind": "screen.transition", "preset": "shockwaveIn", "phase": "enter"}],
+    }
+    loaded, report = load_and_validate(plan)
+    assert loaded is None
+    assert any("duration" in message for message in error_messages(report))
+
+
 def test_validate_rejects_effect_budget_overflow():
     effect = {"kind": "screen.effect", "preset": "snow", "intensity": "subtle"}
     plan = make_plan(
@@ -466,6 +480,27 @@ def test_compile_stage_and_transition_args():
     script = compile_director(plan, asset_pack=None)
     assert "changeBg:bg.webp -enter=shockwaveIn -enterDuration=500;" in script
     assert "bgm:s_Title.mp3;" in script
+
+
+def test_compile_tolerates_transition_without_duration():
+    """编译器兜底：缺 duration/phase 的转场退回默认值，不再抛 KeyError。"""
+    plan = two_beat_plan()
+    plan["beats"][0]["stage"] = {"background": "bg.webp"}
+    plan["beats"][0]["cue"] = {
+        "anchor": "before",
+        "actions": [{"kind": "screen.transition", "preset": "shockwaveIn"}],
+    }
+    script = compile_director(plan, asset_pack=None)
+    assert "changeBg:bg.webp -enter=shockwaveIn -enterDuration=1200;" in script
+
+
+def test_compile_skips_transition_without_preset():
+    """连 preset 都没有的转场：直接忽略，不产出半截参数。"""
+    plan = two_beat_plan()
+    plan["beats"][0]["stage"] = {"background": "bg.webp"}
+    plan["beats"][0]["cue"] = {"anchor": "before", "actions": [{"kind": "screen.transition"}]}
+    script = compile_director(plan, asset_pack=None)
+    assert "changeBg:bg.webp;" in script
 
 
 def test_compile_cue_anchor_suffixes():

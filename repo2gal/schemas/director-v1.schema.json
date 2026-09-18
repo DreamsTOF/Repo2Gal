@@ -169,7 +169,7 @@
     "screenTransition": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["kind"],
+      "required": ["kind", "phase", "preset", "duration"],
       "properties": {
         "kind": {"const": "screen.transition"},
         "phase": {"enum": ["enter", "exit"]},
