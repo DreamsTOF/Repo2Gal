@@ -4,6 +4,18 @@
 [Semantic Versioning 2.0.0](https://semver.org/)；`0.y.z` 阶段的新功能提升 `MINOR`，
 兼容缺陷修复提升 `PATCH`，公开不兼容变更至少提升 `MINOR`。
 
+## 未发布
+
+**skill 自包含重构（`skills/repo2gal/`）**：
+
+- 技能自带确定性内核 `scripts/r2g_core/`（fetcher、generator、director、validator、
+  packager、asset_pack、webgal_assets、performance 与 prompts/schemas/legal/内置 CC0
+  素材包），不再依赖 Repo2Gal 源码目录或 `pip install -e .`；`setup_env.py` 只负责在
+  `<skill>/.venv` 安装第三方依赖，查找 `REPO2GAL_HOME` 的启动逻辑一并移除；
+- 与 agent 驱动无关的部分不进入技能：LLM 客户端（`llm.py`）、CLI（`cli.py`）与自动
+  管线（`pipeline.py`）保持只在仓库内存在；
+- 技能内不含任何 LLM 路径：三轮创作仍由 harness agent 写 `--workdir` 里的文件完成。
+
 ## v0.8.0 — 2026-09-13
 
 **Quick Start（贡献者上手）模式**：

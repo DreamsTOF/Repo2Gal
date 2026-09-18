@@ -197,6 +197,7 @@ WebGAL Adapter 负责把全身原图编译为居中半身 transform，演出动�
 | `repo2gal/prompts/quickstart.md` | Quick Start 第一轮自由创作草稿约束 |
 | `repo2gal/prompts/annotations.md` | 第二轮自然语言演出批注约束 |
 | `repo2gal/prompts/director.md` | 第三轮 Director Plan JSON 约束 |
+| `skills/repo2gal/` | 面向 agent harness 的自包含技能：agent 亲自承担三轮创作；`scripts/r2g_core/` 是 `repo2gal/` 确定性模块（fetcher/generator/director/validator/packager/asset_pack/webgal_assets/performance + prompts/schemas/legal/examples）的内联副本，两侧改动必须同步 |
 | `tests/` | 离线测试，不应依赖 GitHub 或 LLM 网络 |
 
 ## 7. 开发环境与命令

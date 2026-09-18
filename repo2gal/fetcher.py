@@ -340,12 +340,20 @@ def run_backup(
             token_file = handle.name
         os.chmod(token_file, 0o600)
         option = "--token-fine" if token.startswith("github_pat_") else "--token"
-        command.extend((option, Path(token_file).as_uri()))
+        # HACK: [上游只做 "file://" 前缀切片] [python-github-backup 修 read_first_line 后删]
+        # 上游 read_first_line 执行 open(uri[len("file://"):])；Path.as_uri() 在 Windows 产出
+        # file:///C:/...，切片后剩 "/C:/..."，实测 WinError 22。改为 file://C:/... 即可。
+        token_uri = Path(token_file).as_uri()
+        if os.name == "nt":
+            token_uri = "file://" + Path(token_file).as_posix()
+        command.extend((option, token_uri))
 
         log(f"调用 python-github-backup 采集 {owner}/{repo}")
         process = subprocess.Popen(
             command,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             bufsize=1,
@@ -628,7 +636,9 @@ def _discover_workflow_files(directory: Path, git_files: list[str]) -> tuple[str
         ]
     else:
         candidates = [
-            str(path.relative_to(directory))
+            # 仓库内相对路径统一正斜杠：Windows 的反斜杠会让 prompt 里的路径
+            # 与 git ls-tree 的路径、_QUICKSTART_PROJECT_FILES 的写法对不上
+            path.relative_to(directory).as_posix()
             for path in sorted((directory / ".github" / "workflows").glob("*"))
             if path.is_file() and path.name.lower().endswith(_WORKFLOW_SUFFIXES)
         ]
@@ -649,9 +659,9 @@ def _read_contributor_files(
 
 
 def _local_file_paths(directory: Path) -> list[str]:
-    """非 Git 备份的兜底文件列表。"""
+    """非 Git 备份的兜底文件列表（相对路径一律正斜杠）。"""
     return sorted(
-        str(path.relative_to(directory))
+        path.relative_to(directory).as_posix()
         for path in directory.rglob("*")
         if path.is_file() and ".git" not in path.parts
     )
@@ -704,7 +714,7 @@ def _read_wiki(directory: Path, limit: int = 3000) -> str:
     chunks: list[str] = []
     reference, git_paths = _git_files(directory)
     paths = git_paths or [
-        str(path.relative_to(directory))
+        path.relative_to(directory).as_posix()
         for path in sorted(directory.rglob("*.md"))
         if ".git" not in path.parts
     ]
@@ -729,10 +739,17 @@ def _read_wiki(directory: Path, limit: int = 3000) -> str:
 def _git_output(repo_dir: Path, *args: str) -> str:
     if not (repo_dir / ".git").exists():
         return ""
+    # 实测（Windows / cp936 locale）：text=True 用 locale 编码解码 UTF-8 中文输出会炸掉
+    # 内部 reader 线程，stdout 落成 None 并让上层 .strip() 崩；固定 UTF-8 才对得上 git。
     result = subprocess.run(
-        ["git", "-C", str(repo_dir), *args], text=True, capture_output=True, check=False
+        ["git", "-C", str(repo_dir), *args],
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        capture_output=True,
+        check=False,
     )
-    return result.stdout.strip() if result.returncode == 0 else ""
+    return (result.stdout or "").strip() if result.returncode == 0 else ""
 
 
 def _git_files(repo_dir: Path) -> tuple[str, list[str]]:

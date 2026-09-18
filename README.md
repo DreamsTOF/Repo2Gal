@@ -305,6 +305,8 @@ Director Plan JSON；`director.py` 用 beat 一对一锚点、角色状态机、
 ## 文档
 
 - [docs/user-guide.md](docs/user-guide.md) — 用户指南：怎么玩、怎么生成自己的作品、FAQ
+- [skills/repo2gal/SKILL.md](skills/repo2gal/SKILL.md) — Agent 技能：由 agent 亲自担任三轮创作
+  （不需要 `REPO2GAL_API_KEY`），自带确定性内核（抓取、校验、编译与打包），可脱离本仓库独立分发
 - [CONTRIBUTING.md](CONTRIBUTING.md) — 开发规约：环境、边界、提交流程
 - [AGENTS.md](AGENTS.md) — AI Agent 接手仓库的第一入口
 - [CHANGELOG.md](CHANGELOG.md) — 版本历史
