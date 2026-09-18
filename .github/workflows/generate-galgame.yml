@@ -114,8 +114,10 @@ jobs:
           cat > output/site/_headers <<'EOF'
           /assets/*
             Cache-Control: public, max-age=31536000, immutable
-          /*.js
+          /icons/*
             Cache-Control: public, max-age=31536000, immutable
+          /game/*
+            Cache-Control: public, max-age=3600
           /*.html
             Cache-Control: public, max-age=0, must-revalidate
           /webgal-serviceworker.js
