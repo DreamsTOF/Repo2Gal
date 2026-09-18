@@ -1,0 +1,149 @@
+name: generate-galgame
+
+# 试点：手动触发（仅仓库写权限者可触发），把任意公开仓库生成 WebGAL 产物并部署到 Cloudflare Pages。
+# 陌生人入口（CF Worker 表单 / issue 触发）留到第二阶段，本文件只负责"选好参数 → 一条龙出链接"。
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_repo:
+        description: "目标仓库 owner/repo（公开）"
+        required: true
+        default: "DreamsTOF/dsh-prompt-customizer"
+        type: string
+      mode:
+        description: "剧本模式"
+        required: true
+        default: "overview"
+        type: choice
+        options:
+          - overview
+          - chronicle
+          - quickstart
+      profile:
+        description: "演出风格"
+        required: true
+        default: "chronicle-subtle"
+        type: choice
+        options:
+          - chronicle-subtle
+          - chronicle-cinematic
+      asset_pack:
+        description: "素材包（Linux runner 支持 Asset Pack）"
+        required: true
+        default: "none"
+        type: choice
+        options:
+          - none
+          - "builtin:cc0-chronicle"
+      slug:
+        description: "预览分支名，决定 https://<slug>.repo2gal-gallery.pages.dev"
+        required: true
+        default: "dsh-overview"
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: generate-galgame-${{ inputs.slug }}
+  cancel-in-progress: false
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: 系统依赖（Asset Pack MIME 校验需要 libmagic）
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq libmagic1
+
+      - name: 缓存 WebGAL 发行版模板
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/repo2gal
+          key: webgal-4.6.2
+
+      - name: 安装 repo2gal
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      - name: 校验输入
+        env:
+          TARGET_REPO: ${{ inputs.target_repo }}
+        run: |
+          python - <<'PY'
+          import os, re, sys
+
+          target = os.environ["TARGET_REPO"].strip()
+          if not re.fullmatch(r"[A-Za-z0-9._-]{1,50}/[A-Za-z0-9._-]{1,50}", target):
+              sys.exit(f"非法仓库标识：{target!r}（期望 owner/repo）")
+          print(f"目标仓库：{target}")
+          PY
+
+      - name: 生成剧本与产物
+        env:
+          GITHUB_TOKEN: ${{ secrets.TARGET_REPO_TOKEN || github.token }}
+          REPO2GAL_API_KEY: ${{ secrets.REPO2GAL_API_KEY }}
+          TARGET_REPO: ${{ inputs.target_repo }}
+          MODE: ${{ inputs.mode }}
+          PROFILE: ${{ inputs.profile }}
+          ASSET_PACK: ${{ inputs.asset_pack }}
+        run: |
+          set -euo pipefail
+          args=( "$TARGET_REPO" --mode "$MODE" --profile "$PROFILE" --strict --output "output/site" )
+          if [ "$ASSET_PACK" != "none" ]; then
+            args+=( --asset-pack "$ASSET_PACK" --public-assets )
+          fi
+          repo2gal "${args[@]}"
+
+      - name: 注入 Cloudflare Pages 配置
+        run: |
+          set -euo pipefail
+          cat > output/site/_headers <<'EOF'
+          /assets/*
+            Cache-Control: public, max-age=31536000, immutable
+          /*.js
+            Cache-Control: public, max-age=31536000, immutable
+          /*.html
+            Cache-Control: public, max-age=0, must-revalidate
+          /webgal-serviceworker.js
+            Cache-Control: public, max-age=0, must-revalidate
+          EOF
+          cat > output/site/_redirects <<'EOF'
+          /demo / 200
+          /demo/* /:splat 200
+          EOF
+          ls -la output/site | head -12
+          cat output/site/_headers
+
+      - name: 部署到 Cloudflare Pages
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          SLUG: ${{ inputs.slug }}
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4 pages project create repo2gal-gallery --production-branch=main || true
+          npx --yes wrangler@4 pages deploy output/site \
+            --project-name=repo2gal-gallery \
+            --branch="$SLUG" \
+            --commit-dirty=true
+
+      - name: 打印访问地址
+        run: |
+          {
+            echo "### 生成完成"
+            echo ""
+            echo "- 目标仓库：${{ inputs.target_repo }}"
+            echo "- 模式/风格：${{ inputs.mode }} / ${{ inputs.profile }}"
+            echo "- 站点：https://${{ inputs.slug }}.repo2gal-gallery.pages.dev"
+            echo "- 直链：https://${{ inputs.slug }}.repo2gal-gallery.pages.dev/demo"
+          } >> "$GITHUB_STEP_SUMMARY"
