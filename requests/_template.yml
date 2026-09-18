@@ -1,0 +1,8 @@
+# 复制本文件为 requests/<slug>.yml，slug 决定站点域名：
+#   requests/vue-core.yml → https://vue-core.repo2gal-gallery.pages.dev
+# 下划线开头的文件不会被当成请求，所以本模板留在仓库里不会触发任何生成。
+
+repo: owner/name # 必填：目标公开仓库
+mode: overview # 必填：overview（概览）/ chronicle（编年史）/ quickstart（贡献者上手）
+profile: chronicle-subtle # 可选：chronicle-subtle（克制）/ chronicle-cinematic（热闹）
+asset_pack: none # 可选：none / builtin:cc0-chronicle

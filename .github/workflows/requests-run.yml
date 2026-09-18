@@ -1,0 +1,94 @@
+name: requests-run
+
+# 合并到 main 的请求文件 → 逐个生成并部署（复用 generate-galgame.yml 的可调用入口）。
+# 手动 dispatch = 全量重跑 requests/ 下的所有请求。
+on:
+  push:
+    branches: [main]
+    paths:
+      - "requests/**.yml"
+      - "requests/**.yaml"
+      - "tools/**"
+      - ".github/workflows/requests-run.yml"
+      - ".github/workflows/generate-galgame.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      count: ${{ steps.plan.outputs.count }}
+      slugs: ${{ steps.plan.outputs.slugs }}
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: 安装依赖
+        run: python -m pip install --quiet --disable-pip-version-check pyyaml
+
+      - name: 产出生成计划
+        id: plan
+        env:
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          set +e
+          if [ "$EVENT" = "push" ]; then
+            python3 tools/plan_requests.py --diff "$BEFORE" "$HEAD_SHA" >> "$GITHUB_OUTPUT" 2> plan.log
+          else
+            python3 tools/plan_requests.py --all >> "$GITHUB_OUTPUT" 2> plan.log
+          fi
+          code=$?
+          set -e
+          cat plan.log
+          cat plan.log >> "$GITHUB_STEP_SUMMARY"
+          exit $code
+
+  generate:
+    needs: plan
+    if: needs.plan.outputs.count != '0'
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    uses: ./.github/workflows/generate-galgame.yml
+    with:
+      target_repo: ${{ matrix.repo }}
+      mode: ${{ matrix.mode }}
+      profile: ${{ matrix.profile }}
+      asset_pack: ${{ matrix.asset_pack }}
+      slug: ${{ matrix.slug }}
+    secrets: inherit
+
+  summary:
+    needs: [plan, generate]
+    if: always() && needs.plan.outputs.count != '0'
+    runs-on: ubuntu-latest
+    steps:
+      - name: 汇总站点链接
+        env:
+          SLUGS: ${{ needs.plan.outputs.slugs }}
+          RESULT: ${{ needs.generate.result }}
+        run: |
+          set -euo pipefail
+          {
+            echo "### 请求生成结果"
+            echo ""
+            echo "- 触发方式：${{ github.event_name }}"
+            echo "- 生成任务结论：$RESULT"
+            echo ""
+            echo "| 站点 | 直链 |"
+            echo "| --- | --- |"
+            for slug in ${SLUGS//,/ }; do
+              echo "| https://$slug.repo2gal-gallery.pages.dev | https://$slug.repo2gal-gallery.pages.dev/demo |"
+            done
+          } >> "$GITHUB_STEP_SUMMARY"

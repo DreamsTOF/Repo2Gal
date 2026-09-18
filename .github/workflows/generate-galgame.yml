@@ -1,7 +1,11 @@
 name: generate-galgame
 
-# 试点：手动触发（仅仓库写权限者可触发），把任意公开仓库生成 WebGAL 产物并部署到 Cloudflare Pages。
-# 陌生人入口（CF Worker 表单 / issue 触发）留到第二阶段，本文件只负责"选好参数 → 一条龙出链接"。
+# 把任意公开仓库生成 WebGAL 产物并部署到 Cloudflare Pages。
+#
+# 两个入口：
+#   - workflow_dispatch：手动填参数跑一次（仅仓库写权限者可触发）
+#   - workflow_call：被 requests-run.yml 调用，参数来自 requests/<slug>.yml
+# 陌生人入口（CF Worker 表单 / issue 触发）留到后续阶段。
 
 on:
   workflow_dispatch:
@@ -41,6 +45,30 @@ on:
         required: true
         default: "dsh-overview"
         type: string
+
+  # 被 requests-run.yml 调用时的入口；字段与上面一一对应，缺省值保持一致。
+  workflow_call:
+    inputs:
+      target_repo:
+        required: false
+        type: string
+        default: "DreamsTOF/dsh-prompt-customizer"
+      mode:
+        required: false
+        type: string
+        default: "overview"
+      profile:
+        required: false
+        type: string
+        default: "chronicle-subtle"
+      asset_pack:
+        required: false
+        type: string
+        default: "none"
+      slug:
+        required: false
+        type: string
+        default: "dsh-overview"
 
 permissions:
   contents: read
