@@ -45,6 +45,11 @@ on:
         required: true
         default: "dsh-overview"
         type: string
+      source_commit:
+        description: "目标仓库的源提交 sha（留空则自动查询），会写进 site-meta.json 供去重判断"
+        required: false
+        default: ""
+        type: string
 
   # 被 requests-run.yml 调用时的入口；字段与上面一一对应，缺省值保持一致。
   workflow_call:
@@ -69,6 +74,10 @@ on:
         required: false
         type: string
         default: "dsh-overview"
+      source_commit:
+        required: false
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -157,6 +166,26 @@ jobs:
           EOF
           ls -la output/site | head -12
           cat output/site/_headers
+
+      - name: 写入站点状态（下次据此判断"是否已生成过"）
+        env:
+          TARGET_REPO: ${{ inputs.target_repo }}
+          MODE: ${{ inputs.mode }}
+          PROFILE: ${{ inputs.profile }}
+          ASSET_PACK: ${{ inputs.asset_pack }}
+          SLUG: ${{ inputs.slug }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+          GH_TOKEN_FOR_API: ${{ secrets.TARGET_REPO_TOKEN || github.token }}
+        run: |
+          set -euo pipefail
+          commit="$SOURCE_COMMIT"
+          if [ -z "$commit" ]; then
+            commit=$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN_FOR_API" \
+              "https://api.github.com/repos/$TARGET_REPO/commits?per_page=1" | jq -r '.[0].sha // ""')
+          fi
+          python3 tools/write_site_meta.py output/site/site-meta.json \
+            --repo "$TARGET_REPO" --mode "$MODE" --profile "$PROFILE" \
+            --asset-pack "$ASSET_PACK" --slug "$SLUG" --commit "$commit"
 
       - name: 部署到 Cloudflare Pages
         env:

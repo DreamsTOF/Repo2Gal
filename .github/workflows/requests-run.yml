@@ -1,7 +1,8 @@
 name: requests-run
 
 # 合并到 main 的请求文件 → 逐个生成并部署（复用 generate-galgame.yml 的可调用入口）。
-# 手动 dispatch = 全量重跑 requests/ 下的所有请求。
+# 去重：同一站点已经用"同一个源提交"生成过就跳过（状态存在产物里的 site-meta.json），
+# 所以多个 fork 重复提同一个仓库也不会重复烧 LLM；要强制重做就写 force: true 或手动 force 触发。
 on:
   push:
     branches: [main]
@@ -12,6 +13,12 @@ on:
       - ".github/workflows/requests-run.yml"
       - ".github/workflows/generate-galgame.yml"
   workflow_dispatch:
+    inputs:
+      force:
+        description: "忽略去重，requests/ 下全部重做"
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -21,6 +28,8 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       count: ${{ steps.plan.outputs.count }}
+      skipped: ${{ steps.plan.outputs.skipped }}
+      skipped_detail: ${{ steps.plan.outputs.skipped_detail }}
       slugs: ${{ steps.plan.outputs.slugs }}
       matrix: ${{ steps.plan.outputs.matrix }}
     steps:
@@ -41,13 +50,18 @@ jobs:
           EVENT: ${{ github.event_name }}
           BEFORE: ${{ github.event.before }}
           HEAD_SHA: ${{ github.sha }}
+          FORCE: ${{ inputs.force }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set +e
+          args=( --all )
           if [ "$EVENT" = "push" ]; then
-            python3 tools/plan_requests.py --diff "$BEFORE" "$HEAD_SHA" >> "$GITHUB_OUTPUT" 2> plan.log
-          else
-            python3 tools/plan_requests.py --all >> "$GITHUB_OUTPUT" 2> plan.log
+            args=( --diff "$BEFORE" "$HEAD_SHA" )
           fi
+          if [ "$FORCE" = "true" ]; then
+            args+=( --ignore-state )
+          fi
+          python3 tools/plan_requests.py "${args[@]}" >> "$GITHUB_OUTPUT" 2> plan.log
           code=$?
           set -e
           cat plan.log
@@ -67,16 +81,18 @@ jobs:
       profile: ${{ matrix.profile }}
       asset_pack: ${{ matrix.asset_pack }}
       slug: ${{ matrix.slug }}
+      source_commit: ${{ matrix.source_commit }}
     secrets: inherit
 
   summary:
     needs: [plan, generate]
-    if: always() && needs.plan.outputs.count != '0'
+    if: always() && (needs.plan.outputs.count != '0' || needs.plan.outputs.skipped != '0')
     runs-on: ubuntu-latest
     steps:
       - name: 汇总站点链接
         env:
           SLUGS: ${{ needs.plan.outputs.slugs }}
+          SKIPPED_DETAIL: ${{ needs.plan.outputs.skipped_detail }}
           RESULT: ${{ needs.generate.result }}
         run: |
           set -euo pipefail
@@ -86,9 +102,19 @@ jobs:
             echo "- 触发方式：${{ github.event_name }}"
             echo "- 生成任务结论：$RESULT"
             echo ""
-            echo "| 站点 | 直链 |"
-            echo "| --- | --- |"
-            for slug in ${SLUGS//,/ }; do
-              echo "| https://$slug.repo2gal-gallery.pages.dev | https://$slug.repo2gal-gallery.pages.dev/demo |"
-            done
+            if [ -n "${SLUGS:-}" ]; then
+              echo "| 站点 | 直链 |"
+              echo "| --- | --- |"
+              for slug in ${SLUGS//,/ }; do
+                echo "| https://$slug.repo2gal-gallery.pages.dev | https://$slug.repo2gal-gallery.pages.dev/demo |"
+              done
+            else
+              echo "本次没有需要生成的请求。"
+            fi
+            if [ -n "${SKIPPED_DETAIL:-}" ]; then
+              echo ""
+              echo "跳过的请求："
+              echo ""
+              echo "$SKIPPED_DETAIL" | tr '|' '\n' | sed 's/^ *//; s/^/- /'
+            fi
           } >> "$GITHUB_STEP_SUMMARY"

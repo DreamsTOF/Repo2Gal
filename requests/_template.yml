@@ -6,3 +6,4 @@ repo: owner/name # 必填：目标公开仓库
 mode: overview # 必填：overview（概览）/ chronicle（编年史）/ quickstart（贡献者上手）
 profile: chronicle-subtle # 可选：chronicle-subtle（克制）/ chronicle-cinematic（热闹）
 asset_pack: none # 可选：none / builtin:cc0-chronicle
+# force: true    # 可选：该站点已用同一个源提交生成过时，默认会跳过；写 true 强制重做

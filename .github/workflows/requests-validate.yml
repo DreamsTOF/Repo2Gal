@@ -1,8 +1,12 @@
 name: requests-validate
 
-# PR 里新增/修改 requests/*.yml 时跑：纯格式 + 仓库存在性校验，
+# PR 里新增/修改 requests/*.yml 时跑：纯格式 + 目标仓库可达性校验，
 # 不需要任何 secret（用 runner 自带的 github.token 调 GitHub API），也不消耗 LLM。
-# 结论会就地更新到 PR 评论里（同一条评论反复更新，不刷屏）。
+#
+# 安全前提：只 checkout **基线分支**（tools/ 来自 main），PR 的内容仅作为数据读入，
+# 绝不执行 PR 里的代码 —— 所以陌生人从 fork 提的 PR 也是安全的。
+#
+# 结论：能写评论就就地更新同一条评论；fork PR 默认拿不到写权限时降级到 Job Summary。
 on:
   pull_request:
     paths:
@@ -24,6 +28,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.pull_request.base.sha }}
           fetch-depth: 0
 
       - uses: actions/setup-python@v5
@@ -33,14 +38,17 @@ jobs:
       - name: 安装依赖
         run: python -m pip install --quiet --disable-pip-version-check pyyaml
 
-      - name: 找出本次 PR 改动的请求文件
+      - name: 取来本次 PR 的请求文件（只当数据用）
         id: changed
         env:
+          PR: ${{ github.event.pull_request.number }}
           BASE_REF: ${{ github.event.pull_request.base.ref }}
         run: |
           set -euo pipefail
           git fetch --no-tags --quiet origin "$BASE_REF"
-          files=$(git diff --name-only --diff-filter=d "origin/$BASE_REF...HEAD" -- requests/ | tr '\n' ' ')
+          git fetch --no-tags --quiet origin "pull/$PR/head:pr-head"
+          files=$(git diff --name-only --diff-filter=d "origin/$BASE_REF...pr-head" -- requests/ | tr '\n' ' ')
+          git checkout pr-head -- requests/ 2>/dev/null || true
           echo "files=$files" >> "$GITHUB_OUTPUT"
           echo "改动文件：${files:-（无）}"
 
@@ -64,20 +72,24 @@ jobs:
           PR: ${{ github.event.pull_request.number }}
           REPO: ${{ github.repository }}
         run: |
-          set -euo pipefail
+          set -uo pipefail
           marker="<!-- repo2gal-validate -->"
           comment_id=$(gh api "repos/$REPO/issues/$PR/comments?per_page=100" \
-            --jq ".[] | select(.body | contains(\"$marker\")) | .id" | head -1 || true)
-          if [ -n "${comment_id:-}" ]; then
-            gh api -X PATCH "repos/$REPO/issues/comments/$comment_id" -F body=@report.md > /dev/null
+            --jq ".[] | select(.body | contains(\"$marker\")) | .id" 2>/dev/null | head -1)
+          if [ -z "${comment_id:-}" ]; then
+            if gh api -X POST "repos/$REPO/issues/$PR/comments" -F body=@report.md > /dev/null 2>&1; then
+              echo "已新建评论"
+            else
+              echo "::warning::没有评论权限（fork PR 的 token 默认只读），结论见上方 Job Summary"
+            fi
+          elif gh api -X PATCH "repos/$REPO/issues/comments/$comment_id" -F body=@report.md > /dev/null 2>&1; then
             echo "已更新既有评论 $comment_id"
           else
-            gh api -X POST "repos/$REPO/issues/$PR/comments" -F body=@report.md > /dev/null
-            echo "已新建评论"
+            echo "::warning::没有评论权限，结论见上方 Job Summary"
           fi
 
       - name: 结论
         if: steps.validate.outputs.code != '0'
         run: |
-          echo "::error::请求文件校验未通过，具体问题见 PR 评论"
+          echo "::error::请求文件校验未通过，具体问题见 PR 评论或本次 Job Summary"
           exit 1

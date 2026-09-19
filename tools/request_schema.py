@@ -29,9 +29,9 @@ PROFILES = ("chronicle-subtle", "chronicle-cinematic")
 ASSET_PACKS = ("none", "builtin:cc0-chronicle")
 
 REQUIRED_KEYS = ("repo", "mode")
-OPTIONAL_KEYS = ("profile", "asset_pack")
+OPTIONAL_KEYS = ("profile", "asset_pack", "force")
 ALLOWED_KEYS = REQUIRED_KEYS + OPTIONAL_KEYS
-DEFAULTS = {"profile": "chronicle-subtle", "asset_pack": "none"}
+DEFAULTS = {"profile": "chronicle-subtle", "asset_pack": "none", "force": False}
 
 #: 这些 slug 会踩到 Pages 的生产分支或平台保留名
 RESERVED_SLUGS = ("main", "master", "production", "www", "repo2gal-gallery")
@@ -47,18 +47,25 @@ class Request:
     profile: str
     asset_pack: str
     path: Path
+    force: bool = False
 
     @property
     def site_url(self) -> str:
         return f"https://{self.slug}.repo2gal-gallery.pages.dev"
 
-    def as_matrix_row(self) -> dict:
+    @property
+    def identity(self) -> tuple[str, str, str, str]:
+        """内容身份：同一个身份只应该有一个 slug（见 find_duplicates）。"""
+        return (self.repo.lower(), self.mode, self.profile, self.asset_pack)
+
+    def as_matrix_row(self, source_commit: str = "") -> dict:
         return {
             "slug": self.slug,
             "repo": self.repo,
             "mode": self.mode,
             "profile": self.profile,
             "asset_pack": self.asset_pack,
+            "source_commit": source_commit,
         }
 
 
@@ -147,6 +154,13 @@ def parse_request(path: Path) -> Request:
     if asset_pack not in ASSET_PACKS:
         problems.append(f"`asset_pack: {asset_pack}` 非法；只能是 {' / '.join(ASSET_PACKS)}")
 
+    force_raw = raw.get("force", DEFAULTS["force"])
+    if not isinstance(force_raw, bool):
+        problems.append(f"`force: {force_raw}` 必须是 true/false（YAML 里不加引号）")
+        force = False
+    else:
+        force = force_raw
+
     if problems:
         raise RequestError(f"`{display_path(path)}`：\n  - " + "\n  - ".join(problems))
 
@@ -157,4 +171,22 @@ def parse_request(path: Path) -> Request:
         profile=profile,
         asset_pack=asset_pack,
         path=path,
+        force=force,
     )
+
+
+def find_duplicates(requests: list[Request]) -> list[str]:
+    """同一个（仓库, 模式, 风格, 素材包）只允许一个 slug，否则合并时会重复烧 LLM。"""
+    groups: dict[tuple[str, str, str, str], list[Request]] = {}
+    for item in requests:
+        groups.setdefault(item.identity, []).append(item)
+    problems: list[str] = []
+    for identity, items in groups.items():
+        if len(items) < 2:
+            continue
+        names = "、".join(f"`{display_path(item.path)}`" for item in items)
+        problems.append(
+            f"重复请求：{names} 指向同一个目标与模式（{identity[0]} / {identity[1]} / {identity[2]} / {identity[3]}）。"
+            "同一个内容只需要一个 slug：要么删掉多余的，要么改 mode/profile 变成另一个站点"
+        )
+    return problems

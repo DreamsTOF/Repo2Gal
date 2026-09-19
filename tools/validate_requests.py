@@ -28,6 +28,7 @@ from request_schema import (  # noqa: E402
     RequestError,
     display_path,
     filter_request_files,
+    find_duplicates,
     iter_request_files,
     parse_request,
 )
@@ -89,7 +90,10 @@ def render(requests: list[Request], errors: list[str], notes: list[str]) -> str:
                 f"| {item.asset_pack} | [{item.slug}]({item.site_url}) |"
             )
         lines.append("")
-        lines.append(f"合并到 `main` 后会自动生成并部署，链接形如 `{requests[0].site_url}`。")
+        lines.append(
+            "合并到 `main` 后会自动生成并部署；如果该站点已经是用**同一个源提交**生成的，"
+            "本次会直接跳过（要强制重做就在文件里写 `force: true`）。"
+        )
         lines.append("")
 
     if errors:
@@ -137,6 +141,8 @@ def main(argv: list[str] | None = None) -> int:
             requests.append(parse_request(path))
         except RequestError as exc:
             errors.append(str(exc))
+
+    errors.extend(find_duplicates(requests))
 
     if requests and not args.no_repo_check:
         for item in requests:
